@@ -1,0 +1,206 @@
+/* ===== KDS (Cocina) ===== */
+.kds-wrap{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  padding:12px;
+}
+
+.kds-header{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding:14px;
+  box-shadow: var(--shadow-md);
+}
+
+.kds-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap: wrap;
+}
+
+.kds-title h1{
+  margin:0;
+  font-size: clamp(20px, 4vw, 26px);
+  line-height:1.1;
+}
+
+.kds-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:10px;
+  align-items:center;
+}
+
+.kds-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius: var(--r-pill);
+  border:1px solid var(--line);
+  background: var(--bg);
+  font-weight:700;
+  font-size:13px;
+  color: var(--text);
+}
+
+.kds-dot{
+  width:10px;
+  height:10px;
+  border-radius: var(--r-pill);
+  background: var(--muted);
+}
+.kds-dot.ok{ background: var(--success); }
+.kds-dot.warn{ background: var(--warn); }
+.kds-dot.off{ background: var(--danger); }
+
+.kds-actions{
+  margin-left:auto;
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap: wrap;
+}
+
+.kds-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap:14px;
+}
+
+.kds-card{
+  background: var(--card);
+  border:1.5px solid var(--line);
+  border-radius: var(--r-lg);
+  padding:16px;
+  box-shadow: var(--shadow-md);
+  position:relative;
+  overflow:hidden;
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.kds-card:hover{ transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+
+/* Barra de estado arriba: bien gruesa para leerse desde lejos */
+.kds-card::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  height:8px;
+  width:100%;
+  background: var(--line);
+}
+.kds-card.status-NEW{ border-color: var(--brandLine); }
+.kds-card.status-NEW::before{ background: var(--sky); }
+.kds-card.status-PREP{ background: #fffaf0; border-color: #f6dca0; }
+.kds-card.status-PREP::before{ background: var(--warn); }
+.kds-card.status-READY{ background: #f2faf0; border-color: #bfe3ba; }
+.kds-card.status-READY::before{ background: var(--success); }
+
+.kds-card-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:4px;
+}
+
+.kds-card h2{
+  margin:0;
+  font-size: clamp(16px, 3vw, 18px);
+}
+
+.kds-sub{
+  margin-top:2px;
+  font-size:13px;
+  color: var(--muted);
+}
+
+.kds-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius: var(--r-pill);
+  font-weight:800;
+  font-size:12.5px;
+  letter-spacing: .02em;
+  border:1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  white-space:nowrap;
+}
+.kds-badge.NEW{ background: rgba(47,168,221,.12); border-color: rgba(47,168,221,.35); color: #146287; }
+.kds-badge.PREP{ background:#fff3d9; border-color:#f6dca0; color:#8a5a06; }
+.kds-badge.READY{ background:#e3f5e1; border-color:#bfe3ba; color:#1f6b1c; }
+
+.kds-items{
+  margin-top:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.kds-item{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:12px;
+  border-radius: var(--r-md);
+  border:1px solid var(--line);
+  background: var(--card);
+}
+
+.kds-item b{ font-size:15px; }
+.kds-note{
+  margin-top:4px;
+  font-size:12px;
+  color: var(--muted);
+}
+
+.kds-btnrow{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.kds-btn{
+  appearance:none;
+  border:1px solid var(--line);
+  background: var(--card);
+  border-radius: var(--r-md);
+  padding:12px 14px;
+  font-size: 14px;
+  font-weight:800;
+  font-family: inherit;
+  cursor:pointer;
+  flex: 1 1 auto;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.kds-btn:hover{ transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.kds-btn:active{ transform: scale(.97); }
+
+.kds-btn.primary{
+  background: var(--success);
+  color:#fff;
+  border-color: var(--success);
+}
+
+.kds-btn.warn{
+  background:#fff3d9;
+  border-color:#f6dca0;
+  color:#8a5a06;
+}
+
+@media (max-width: 600px){
+  .kds-wrap{ padding: 8px; gap: 10px; }
+  .kds-pill{ font-size: 11px; padding: 6px 10px; }
+  .kds-btn{ padding: 8px 10px; font-size: 13px; }
+  .kds-actions{ margin-left: 0; width: 100%; }
+}

@@ -1,0 +1,178 @@
+{# Admin screen: waiter list with per-waiter totals for the selected period. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Meseros | Admin | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}Meseros{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn ghost" href="{% url 'admin_dashboard' %}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div class="admin-layout">
+
+  <div class="admin-main">
+
+    <!-- Waiter list -->
+    <div class="card" style="padding:0; overflow:hidden;">
+
+      <!-- Table header -->
+      <div class="wtable-head">
+        <span>Mesero</span>
+        <div class="wtable-cols">
+          <span>Pedidos</span>
+          <span>Total vendido</span>
+          <span></span>
+        </div>
+      </div>
+
+      {% for row in rows %}
+      <a class="wtable-row" href="{% url 'admin_waiter_detail' row.waiter.id %}?{{ request.GET.urlencode }}">
+
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="wavatar">{{ row.waiter.username|first|upper }}</div>
+          <span class="wname">{{ row.waiter.username }}</span>
+        </div>
+
+        <div class="wtable-cols">
+          <span class="wval">{{ row.orders_count }}</span>
+          <span class="wval">$ {{ row.paid_total|floatformat:0 }}</span>
+          <span class="wlink">Ver perfil →</span>
+        </div>
+
+      </a>
+      {% empty %}
+      <div class="muted" style="padding:20px 16px;">No hay meseros con pedidos en este periodo.</div>
+      {% endfor %}
+
+    </div>
+
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="admin-side">
+    <div class="card sticky">
+      <div class="title">Filtros</div>
+      <div class="muted small" style="margin-top:2px;">{{ start|date:"d/m/Y" }} → {{ end|date:"d/m/Y" }}</div>
+      <div class="hr"></div>
+      <form method="get" class="filters">
+        <label class="label">Periodo</label>
+        <select class="input" name="period">
+          <option value="today" {% if period == "today" %}selected{% endif %}>Hoy</option>
+          <option value="month" {% if period == "month" %}selected{% endif %}>Este mes</option>
+          <option value="year"  {% if period == "year"  %}selected{% endif %}>Este año</option>
+          <option value="range" {% if period == "range" %}selected{% endif %}>Rango</option>
+        </select>
+        <div class="two-cols">
+          <div>
+            <label class="label">Desde</label>
+            <input class="input" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+          </div>
+          <div>
+            <label class="label">Hasta</label>
+            <input class="input" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+          </div>
+        </div>
+        <button class="btn primary" type="submit" style="width:100%;">Aplicar</button>
+      </form>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  /* ── Column header ── */
+  .wtable-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--line);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+
+  /* ── Aligned columns ── */
+  .wtable-cols {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-width: 360px;
+  }
+
+  .wtable-cols > span {
+    width: 120px;
+    text-align: right;
+  }
+
+  /* ── Row ── */
+  .wtable-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+    transition: background .1s;
+  }
+  .wtable-row:last-child { border-bottom: none; }
+  .wtable-row:hover { background: #f8fafc; }
+
+  /* ── Avatar ── */
+  .wavatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    color: #fff;
+    font-weight: 950;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .wname {
+    font-weight: 900;
+    font-size: 14px;
+  }
+
+  /* ── Values ── */
+  .wval {
+    font-size: 15px;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+    width: 120px;
+    text-align: right;
+  }
+
+  .wlink {
+    width: 120px;
+    text-align: right;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--brand);
+  }
+
+  @media (max-width: 720px) {
+    .wtable-cols { min-width: 0; gap: 16px; }
+    .wtable-cols > span, .wval, .wlink { width: auto; }
+    .wtable-head .wtable-cols span:last-child { display: none; }
+  }
+</style>
+{% endblock %}

@@ -1,0 +1,389 @@
+{# Admin screen: user list with role filter/search, and a create-user sidebar form. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Usuarios | Admin | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}Usuarios{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Gestión de accesos y roles</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_dashboard' %}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div class="admin-layout" style="margin-top:12px;">
+
+  <!-- MAIN -->
+  <div class="admin-main">
+
+    <!-- Filters -->
+    <div class="card">
+      <form method="get" class="u-filters">
+        <div class="u-search-wrap">
+          <svg class="u-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="9" cy="9" r="6"/><path d="M15 15l-3-3"/>
+          </svg>
+          <input class="input u-search-input" name="q" value="{{ q }}" placeholder="Buscar usuario…">
+        </div>
+
+        <div class="u-role-chips">
+          <a href="{% url 'admin_users' %}{% if q %}?q={{ q }}{% endif %}" class="u-chip {% if not role_filter %}u-chip--active{% endif %}">Todos</a>
+          <a href="?role=ADMIN{% if q %}&q={{ q }}{% endif %}" class="u-chip u-chip--admin {% if role_filter == 'ADMIN' %}u-chip--active{% endif %}">Admin</a>
+          <a href="?role=KITCHEN{% if q %}&q={{ q }}{% endif %}" class="u-chip u-chip--kitchen {% if role_filter == 'KITCHEN' %}u-chip--active{% endif %}">Cocina</a>
+          <a href="?role=WAITER{% if q %}&q={{ q }}{% endif %}" class="u-chip u-chip--waiter {% if role_filter == 'WAITER' %}u-chip--active{% endif %}">Mesera</a>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button class="btn primary" type="submit">Buscar</button>
+          <a class="btn" href="{% url 'admin_users' %}">Limpiar</a>
+        </div>
+      </form>
+    </div>
+
+    <!-- User list -->
+    <div class="u-grid">
+      {% for u in users %}
+      <div class="u-card">
+        <!-- Avatar -->
+        <div class="u-avatar
+          {% if u.role == 'ADMIN' %}u-avatar--admin
+          {% elif u.role == 'KITCHEN' %}u-avatar--kitchen
+          {% elif u.role == 'WAITER' %}u-avatar--waiter
+          {% endif %}">
+          {{ u.username|slice:":1"|upper }}
+        </div>
+
+        <!-- Info -->
+        <div class="u-info">
+          <div class="u-name">{{ u.username }}</div>
+          <div class="u-meta">
+            <span class="u-role-badge
+              {% if u.role == 'ADMIN' %}u-role--admin
+              {% elif u.role == 'KITCHEN' %}u-role--kitchen
+              {% elif u.role == 'WAITER' %}u-role--waiter
+              {% endif %}">
+              {% if u.role == "ADMIN" %}Administrador
+              {% elif u.role == "KITCHEN" %}Cocina
+              {% elif u.role == "WAITER" %}Mesera
+              {% else %}{{ u.role }}
+              {% endif %}
+            </span>
+            {% if u.is_active %}
+            <span class="u-status u-status--on"><span class="u-dot"></span>Activo</span>
+            {% else %}
+            <span class="u-status u-status--off"><span class="u-dot u-dot--off"></span>Inactivo</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="u-actions">
+          <a class="btn" href="{% url 'admin_user_edit' u.id %}">Editar</a>
+          <a class="btn u-btn-del" href="{% url 'admin_user_delete' u.id %}">Eliminar</a>
+        </div>
+      </div>
+      {% empty %}
+      <div class="u-empty">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="24" cy="18" r="8"/><path d="M8 40c0-8.837 7.163-16 16-16s16 7.163 16 16"/>
+        </svg>
+        <div>No se encontraron usuarios</div>
+        <div class="muted small">Prueba con otro filtro o crea uno nuevo</div>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <!-- SIDEBAR: CREATE -->
+  <aside class="admin-side">
+    <div class="card sticky">
+      <div class="card-head">
+        <div>
+          <div class="title">Crear usuario</div>
+          <div class="muted small">Define rol y contraseña</div>
+        </div>
+        <div class="u-create-icon">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 5v10M5 10h10"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <form method="post" class="filters">
+        {% csrf_token %}
+
+        <label class="label">Usuario</label>
+        {{ form.username }}
+        {% for e in form.username.errors %}<div class="u-err">{{ e }}</div>{% endfor %}
+
+        <label class="label">Rol</label>
+        {{ form.role }}
+        {% for e in form.role.errors %}<div class="u-err">{{ e }}</div>{% endfor %}
+
+        <label class="label">Estado</label>
+        <div class="u-check-row">
+          {{ form.is_active }}
+          <span class="muted small">Puede iniciar sesión</span>
+        </div>
+
+        <label class="label">Contraseña</label>
+        {{ form.password1 }}
+        {% for e in form.password1.errors %}<div class="u-err">{{ e }}</div>{% endfor %}
+
+        <label class="label">Confirmar</label>
+        {{ form.password2 }}
+        {% for e in form.password2.errors %}<div class="u-err">{{ e }}</div>{% endfor %}
+
+        <button class="btn primary" style="width:100%; margin-top:4px;" type="submit">Crear usuario</button>
+
+        {% if form.non_field_errors %}
+        {% for e in form.non_field_errors %}
+        <div class="u-err">{{ e }}</div>
+        {% endfor %}
+        {% endif %}
+      </form>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ===== FILTERS ===== */
+.u-filters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.u-search-wrap {
+  position: relative;
+  flex: 1 1 180px;
+}
+.u-search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.u-search-input {
+  padding-left: 34px !important;
+}
+
+.u-role-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.u-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  color: var(--muted);
+  transition: transform .12s ease, box-shadow .12s ease;
+  cursor: pointer;
+}
+.u-chip:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,.07); }
+.u-chip--active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.u-chip--admin.u-chip--active   { background: #1e3a8a; border-color: #1e3a8a; }
+.u-chip--kitchen.u-chip--active { background: #d97706; border-color: #d97706; }
+.u-chip--waiter.u-chip--active  { background: #7c3aed; border-color: #7c3aed; }
+
+/* ===== USER GRID ===== */
+.u-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ===== USER CARD ===== */
+.u-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(2,6,23,.04);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.u-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(2,6,23,.08);
+  border-color: rgba(30,58,138,.15);
+}
+
+/* Avatar */
+.u-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+  background: #e2e8f0;
+  color: #475569;
+}
+.u-avatar--admin   { background: #dbeafe; color: #1e3a8a; }
+.u-avatar--kitchen { background: #fef3c7; color: #92400e; }
+.u-avatar--waiter  { background: #ede9fe; color: #5b21b6; }
+
+/* Info */
+.u-info {
+  flex: 1;
+  min-width: 0;
+}
+.u-name {
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.u-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+
+/* Role badge */
+.u-role-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.01em;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid var(--line);
+}
+.u-role--admin   { background: #dbeafe; color: #1e3a8a; border-color: #bfdbfe; }
+.u-role--kitchen { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.u-role--waiter  { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+
+/* Status */
+.u-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--muted);
+}
+.u-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #f59e0b;
+}
+.u-dot--off { background: #cbd5e1; }
+
+/* Actions */
+.u-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.u-btn-del {
+  border-color: rgba(239, 68, 68, .35) !important;
+  color: #b91c1c !important;
+  font-weight: 900 !important;
+}
+.u-btn-del:hover {
+  box-shadow: 0 10px 24px rgba(239,68,68,.15) !important;
+  border-color: rgba(239,68,68,.6) !important;
+}
+
+/* Empty state */
+.u-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+.u-empty svg {
+  width: 48px;
+  height: 48px;
+  opacity: .35;
+  margin-bottom: 4px;
+}
+
+/* Error */
+.u-err {
+  font-size: 12px;
+  color: #b91c1c;
+  margin-top: 2px;
+}
+
+/* Check row */
+.u-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Create icon */
+.u-create-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.u-create-icon svg {
+  width: 18px;
+  height: 18px;
+  color: #fff;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .u-filters { flex-direction: column; align-items: stretch; }
+  .u-actions { flex-direction: column; }
+  .u-card { flex-wrap: wrap; }
+}
+</style>
+{% endblock %}

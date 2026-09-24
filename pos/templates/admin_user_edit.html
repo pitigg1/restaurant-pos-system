@@ -1,0 +1,301 @@
+{# Admin screen: edit a single user's profile and reset their password. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Editar {{ uobj.username }} | Admin | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}{{ uobj.username }}{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Editar usuario</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_users' %}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div class="admin-layout" style="margin-top:12px;">
+
+  <!-- MAIN -->
+  <div class="admin-main">
+
+    <!-- PROFILE -->
+    <div class="card ue-card">
+      <div class="ue-section-head">
+        <div class="ue-section-icon ue-icon--blue">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="10" cy="7" r="3.5"/>
+            <path d="M3 17c0-3.866 3.134-7 7-7s7 3.134 7 7"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Datos del usuario</div>
+          <div class="muted small">Username, rol y estado de acceso</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <form method="post" class="ue-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_profile">
+
+        <div class="ue-field">
+          <label class="label">Usuario</label>
+          {{ form.username }}
+          {% for e in form.username.errors %}<div class="ue-err">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div class="ue-field">
+          <label class="label">Rol</label>
+          {{ form.role }}
+          {% for e in form.role.errors %}<div class="ue-err">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div class="ue-field">
+          <label class="label">Estado</label>
+          <div class="ue-check-row">
+            {{ form.is_active }}
+            <span class="muted small">Puede iniciar sesión</span>
+          </div>
+        </div>
+
+        <div class="ue-actions">
+          <button class="btn primary" type="submit">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- PASSWORD -->
+    <div class="card ue-card">
+      <div class="ue-section-head">
+        <div class="ue-section-icon ue-icon--amber">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="9" width="12" height="9" rx="2"/>
+            <path d="M7 9V6.5a3 3 0 0 1 6 0V9"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Resetear contraseña</div>
+          <div class="muted small">No se necesita la contraseña anterior</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <form method="post" class="ue-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="reset_password">
+
+        <div class="ue-field">
+          <label class="label">Nueva contraseña</label>
+          {{ pwd_form.password1 }}
+          {% for e in pwd_form.password1.errors %}<div class="ue-err">{{ e }}</div>{% endfor %}
+        </div>
+
+        <div class="ue-field">
+          <label class="label">Confirmar contraseña</label>
+          {{ pwd_form.password2 }}
+          {% for e in pwd_form.password2.errors %}<div class="ue-err">{{ e }}</div>{% endfor %}
+        </div>
+
+        {% if pwd_form.non_field_errors %}
+        {% for e in pwd_form.non_field_errors %}
+        <div class="ue-err">{{ e }}</div>
+        {% endfor %}
+        {% endif %}
+
+        <div class="ue-actions">
+          <button class="btn primary" type="submit">Actualizar contraseña</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- SIDEBAR -->
+  <aside class="admin-side">
+    <div class="card sticky">
+
+      <!-- Large avatar -->
+      <div class="ue-profile">
+        <div class="ue-avatar-lg
+          {% if uobj.role == 'ADMIN' %}ue-av--admin
+          {% elif uobj.role == 'KITCHEN' %}ue-av--kitchen
+          {% elif uobj.role == 'WAITER' %}ue-av--waiter
+          {% endif %}">
+          {{ uobj.username|slice:":1"|upper }}
+        </div>
+        <div class="ue-profile-name">{{ uobj.username }}</div>
+        <div class="ue-profile-role
+          {% if uobj.role == 'ADMIN' %}ue-role--admin
+          {% elif uobj.role == 'KITCHEN' %}ue-role--kitchen
+          {% elif uobj.role == 'WAITER' %}ue-role--waiter
+          {% endif %}">
+          {% if uobj.role == "ADMIN" %}Administrador
+          {% elif uobj.role == "KITCHEN" %}Cocina
+          {% elif uobj.role == "WAITER" %}Mesera
+          {% else %}{{ uobj.role }}
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- Status -->
+      <div class="ue-status-row">
+        <span class="muted small">Estado</span>
+        {% if uobj.is_active %}
+        <span class="ue-pill ue-pill--on"><span class="ue-dot ue-dot--on"></span>Activo</span>
+        {% else %}
+        <span class="ue-pill ue-pill--off"><span class="ue-dot"></span>Inactivo</span>
+        {% endif %}
+      </div>
+
+      <div class="hr"></div>
+
+      <a class="btn" style="width:100%; justify-content:center;" href="{% url 'admin_users' %}">← Regresar</a>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ===== CARD WITH SECTION HEAD ===== */
+.ue-card { display: flex; flex-direction: column; gap: 0; }
+
+.ue-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ue-section-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ue-section-icon svg { width: 20px; height: 20px; }
+
+.ue-icon--blue   { background: #dbeafe; color: #1e3a8a; }
+.ue-icon--amber  { background: #fef3c7; color: #92400e; }
+
+/* ===== FORM ===== */
+.ue-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ue-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ue-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.ue-actions {
+  padding-top: 2px;
+}
+
+.ue-err {
+  font-size: 12px;
+  color: #b91c1c;
+  margin-top: 2px;
+}
+
+/* ===== SIDEBAR: PROFILE ===== */
+.ue-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
+.ue-avatar-lg {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  background: #e2e8f0;
+  color: #475569;
+}
+.ue-av--admin   { background: #dbeafe; color: #1e3a8a; }
+.ue-av--kitchen { background: #fef3c7; color: #92400e; }
+.ue-av--waiter  { background: #ede9fe; color: #5b21b6; }
+
+.ue-profile-name {
+  font-size: 17px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.ue-profile-role {
+  font-size: 12px;
+  font-weight: 900;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f1f5f9;
+  color: #475569;
+}
+.ue-role--admin   { background: #dbeafe; color: #1e3a8a; border-color: #bfdbfe; }
+.ue-role--kitchen { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.ue-role--waiter  { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+
+/* ===== STATUS ROW ===== */
+.ue-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ue-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 900;
+}
+.ue-pill--on  { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.ue-pill--off { background: #f8fafc; color: var(--muted); }
+
+.ue-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+.ue-dot--on { background: #22c55e; }
+</style>
+{% endblock %}

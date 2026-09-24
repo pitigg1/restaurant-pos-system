@@ -1,0 +1,374 @@
+{# Admin screen: a single waiter's orders, KPIs and date-range filters. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ waiter.username }} | Admin | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}{{ waiter.username }}{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Pedidos · {{ start }} → {{ end }}</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_waiters' %}?{{ request.GET.urlencode }}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div class="admin-layout" style="margin-top:12px;">
+
+  <!-- MAIN -->
+  <div class="admin-main">
+
+    <!-- KPIs -->
+    <div class="wd-kpis">
+      <div class="wd-kpi">
+        <div class="wd-kpi-icon wd-icon--blue">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 6h12M4 10h12M4 14h7"/>
+          </svg>
+        </div>
+        <div>
+          <div class="muted small">Pedidos</div>
+          <div class="wd-kpi-val">{{ orders_count }}</div>
+        </div>
+        <div class="wd-period-pill">
+          <span class="wd-dot"></span>
+          {% if period == "today" %}Hoy
+          {% elif period == "month" %}Este mes
+          {% elif period == "year" %}Este año
+          {% else %}Rango
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="wd-kpi">
+        <div class="wd-kpi-icon wd-icon--green">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 3v14M6 7l4-4 4 4M6 13l4 4 4-4"/>
+          </svg>
+        </div>
+        <div>
+          <div class="muted small">Total vendido</div>
+          <div class="wd-kpi-val">$ {{ total_amount|floatformat:0 }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ORDER LIST -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="title">Pedidos</div>
+          <div class="muted small">Haz click para ver el detalle</div>
+        </div>
+        <div class="badge">{{ orders_count }} en total</div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="wd-orders">
+        {% for o in orders %}
+        <a class="wd-order" href="{% url 'admin_order_detail' o.id %}?{{ request.GET.urlencode }}">
+
+          <!-- Left -->
+          <div class="wd-order-left">
+            <div class="wd-order-table">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+                <rect x="2" y="5" width="12" height="8" rx="1.5"/><path d="M5 5V3.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1V5"/>
+              </svg>
+              {{ o.zone }} · Mesa {{ o.table_number }}
+            </div>
+            <div class="muted small" style="margin-top:3px;">
+              {{ o.created_at|date:"d/m/Y H:i" }} · #{{ o.id }} · {{ o.items.count }} items
+            </div>
+            <div class="wd-payline">
+              {% if o.is_paid %}
+              <span class="wd-pill wd-pill--paid"><span class="wd-dot wd-dot--green"></span>Pagado</span>
+              <span class="wd-pill">
+                {% if o.payment_method == "CASH" %}Efectivo
+                {% elif o.payment_method == "NEQUI" %}Nequi
+                {% elif o.payment_method == "TRANSFER" %}Transferencia
+                {% else %}—{% endif %}
+              </span>
+              {% else %}
+              <span class="wd-pill wd-pill--pending"><span class="wd-dot"></span>Pendiente</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Right -->
+          <div class="wd-order-right">
+            <div class="wd-order-total">$ {{ o.total_amount|floatformat:0 }}</div>
+            <div class="wd-status-badge
+              {% if o.status == 'OPEN' %}wd-status--open
+              {% elif o.status == 'CLOSED' %}wd-status--closed
+              {% else %}wd-status--default
+              {% endif %}">
+              {% if o.status == "OPEN" %}Abierto
+              {% elif o.status == "CLOSED" %}Cerrado
+              {% else %}{{ o.status }}{% endif %}
+            </div>
+          </div>
+
+        </a>
+        {% empty %}
+        <div class="wd-empty">
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="8" y="12" width="32" height="28" rx="3"/><path d="M16 12V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/>
+            <path d="M18 22h12M18 28h8"/>
+          </svg>
+          <div>No hay pedidos en este periodo</div>
+          <div class="muted small">Cambia el rango de fechas en los filtros</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- SIDEBAR FILTERS -->
+  <aside class="admin-side">
+    <div class="card sticky">
+      <div class="card-head">
+        <div>
+          <div class="title">Filtros</div>
+          <div class="muted small">Aplica al periodo</div>
+        </div>
+        <div class="wd-filter-icon">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 5h14M6 10h8M9 15h2"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <form method="get" class="filters">
+        <div>
+          <label class="label">Periodo</label>
+          <select class="input" name="period">
+            <option value="today"  {% if period == "today"  %}selected{% endif %}>Hoy</option>
+            <option value="month"  {% if period == "month"  %}selected{% endif %}>Este mes</option>
+            <option value="year"   {% if period == "year"   %}selected{% endif %}>Este año</option>
+            <option value="range"  {% if period == "range"  %}selected{% endif %}>Rango personalizado</option>
+          </select>
+        </div>
+
+        <div class="two-cols">
+          <div>
+            <label class="label">Desde</label>
+            <input class="input" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+          </div>
+          <div>
+            <label class="label">Hasta</label>
+            <input class="input" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+          </div>
+        </div>
+
+        <button class="btn primary" type="submit" style="width:100%;">Aplicar</button>
+
+        <a class="btn" style="width:100%; justify-content:center;" href="{% url 'admin_waiter_detail' waiter.id %}">
+          Limpiar
+        </a>
+
+        <div class="muted small" style="padding: 6px 2px 0;">
+          Tip: usa <b>Rango personalizado</b> para reportes por fecha.
+        </div>
+      </form>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ===== KPIs ===== */
+.wd-kpis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.wd-kpi {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 4px 14px rgba(2,6,23,.05);
+  position: relative;
+}
+
+.wd-kpi-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.wd-kpi-icon svg { width: 20px; height: 20px; }
+.wd-icon--blue  { background: #dbeafe; color: #1e3a8a; }
+.wd-icon--green { background: #dcfce7; color: #166534; }
+
+.wd-kpi-val {
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.wd-period-pill {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--muted);
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+/* ===== ORDERS LIST ===== */
+.wd-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wd-order {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.wd-order:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(2,6,23,.08);
+  border-color: rgba(30,58,138,.18);
+}
+
+.wd-order-left { min-width: 0; flex: 1; }
+
+.wd-order-table {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 950;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.wd-order-table svg { flex-shrink: 0; color: var(--muted); }
+
+.wd-payline {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+
+.wd-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--muted);
+}
+.wd-pill--paid    { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.wd-pill--pending { background: #fefce8; border-color: #fde68a; color: #92400e; }
+
+.wd-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+.wd-dot--green { background: #22c55e; }
+
+/* Right col */
+.wd-order-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.wd-order-total {
+  font-size: 16px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.wd-status-badge {
+  font-size: 11px;
+  font-weight: 950;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f1f5f9;
+  color: var(--muted);
+}
+.wd-status--open   { background: #dbeafe; border-color: #bfdbfe; color: #1e3a8a; }
+.wd-status--closed { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+
+/* Empty */
+.wd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+.wd-empty svg { width: 48px; height: 48px; opacity: .3; margin-bottom: 4px; }
+
+/* Filter icon */
+.wd-filter-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wd-filter-icon svg { width: 16px; height: 16px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .wd-kpis { grid-template-columns: 1fr; }
+  .wd-order { flex-wrap: wrap; }
+}
+</style>
+{% endblock %}

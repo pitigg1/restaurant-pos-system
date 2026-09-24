@@ -1,0 +1,529 @@
+{# Admin screen: business info, tips, payment labels, zones/tables config. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Configuración | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}Configuración{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Ajustes del negocio</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_dashboard' %}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+<div style="margin-top:12px; display:flex; flex-direction:column; gap:8px;">
+  {% for m in messages %}
+  <div class="cfg-toast {% if 'eliminada' in m.message or 'Error' in m.message %}cfg-toast--err{% else %}cfg-toast--ok{% endif %}">
+    {{ m }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="cfg-layout">
+
+  <!-- ===== MAIN COLUMN ===== -->
+  <div class="cfg-main">
+
+    <!-- 1. BUSINESS INFO -->
+    <div class="card cfg-section">
+      <div class="cfg-section-head">
+        <div class="cfg-icon cfg-icon--blue">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l7-6 7 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>
+            <path d="M8 20v-8h4v8"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Datos del negocio</div>
+          <div class="muted small">Nombre y logo</div>
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <form method="post" enctype="multipart/form-data" class="cfg-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_business">
+
+        <div class="cfg-field">
+          <label class="label">Nombre del negocio</label>
+          <input class="input" type="text" name="name" value="{{ config.name }}" required>
+        </div>
+
+        <div class="cfg-field">
+          <label class="label">Logo</label>
+          <label class="cfg-upload" id="uploadLabel">
+            <input type="file" name="logo" accept="image/*" id="logoInput" style="display:none;" onchange="previewLogo(this)">
+            <div class="cfg-upload-preview" id="uploadPreview">
+              {% if config.logo %}
+              <img id="logoImg" src="{{ config.logo.url }}" alt="Logo">
+              {% else %}
+              <img id="logoImg" style="display:none;" alt="Logo">
+              {% endif %}
+              <div class="cfg-upload-placeholder" id="uploadPlaceholder" {% if config.logo %}style="display:none;"{% endif %}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="28" height="28">
+                  <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M12 4v12M8 8l4-4 4 4"/>
+                </svg>
+                <span>Subir imagen</span>
+              </div>
+            </div>
+            <div class="cfg-upload-label" id="uploadFilename">
+              {% if config.logo %}{{ config.logo.name|slice:"9:" }}{% else %}Haz clic para seleccionar{% endif %}
+            </div>
+          </label>
+        </div>
+
+        <div class="cfg-section-head" style="margin-top:4px;">
+          <div class="cfg-icon cfg-icon--amber" style="width:34px;height:34px;border-radius:10px;">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="10" cy="10" r="7"/><path d="M10 6v4l2 2"/>
+            </svg>
+          </div>
+          <div>
+            <div class="title" style="font-size:14px;">Propinas</div>
+            <div class="muted small">Configura cómo se cobran</div>
+          </div>
+        </div>
+
+        <div class="cfg-two">
+          <div class="cfg-field">
+            <label class="label">Tipo</label>
+            <select class="input" name="tip_type">
+              <option value="NONE"    {% if config.tip_type == "NONE"    %}selected{% endif %}>Sin propina</option>
+              <option value="FIXED"   {% if config.tip_type == "FIXED"   %}selected{% endif %}>Valor fijo</option>
+              <option value="PERCENT" {% if config.tip_type == "PERCENT" %}selected{% endif %}>Porcentaje</option>
+            </select>
+          </div>
+          <div class="cfg-field">
+            <label class="label">Valor <span class="muted small">(pesos o %)</span></label>
+            <input class="input" type="number" min="0" step="any" name="tip_value" value="{{ config.tip_value|floatformat:0 }}">
+          </div>
+        </div>
+
+        <div class="cfg-actions">
+          <button class="btn primary" type="submit">Guardar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 2. PAYMENT METHODS -->
+    <div class="card cfg-section">
+      <div class="cfg-section-head">
+        <div class="cfg-icon cfg-icon--green">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="5" width="16" height="11" rx="2"/>
+            <path d="M2 9h16"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Métodos de pago</div>
+          <div class="muted small">Personaliza los nombres que ve la mesera</div>
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <form method="post" class="cfg-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_payments">
+
+        <div class="cfg-methods">
+          <div class="cfg-method-row">
+            <div class="cfg-method-tag cfg-tag--cash">CASH</div>
+            <input class="input" type="text" name="cash_label" value="{{ config.cash_label }}" maxlength="40" required>
+          </div>
+          <div class="cfg-method-row">
+            <div class="cfg-method-tag cfg-tag--nequi">NEQUI</div>
+            <input class="input" type="text" name="nequi_label" value="{{ config.nequi_label }}" maxlength="40" required>
+          </div>
+          <div class="cfg-method-row">
+            <div class="cfg-method-tag cfg-tag--transfer">TRANS</div>
+            <input class="input" type="text" name="transfer_label" value="{{ config.transfer_label }}" maxlength="40" required>
+          </div>
+        </div>
+
+        <div class="cfg-actions">
+          <button class="btn primary" type="submit">Guardar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 3. ZONES AND TABLES -->
+    <div class="card cfg-section">
+      <div class="cfg-section-head">
+        <div class="cfg-icon cfg-icon--purple">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="7" width="16" height="10" rx="2"/>
+            <path d="M6 7V5a2 2 0 0 1 4 0v2M10 7V5a2 2 0 0 1 4 0v2"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Áreas y mesas</div>
+          <div class="muted small">{{ zone_data|length }} área{{ zone_data|length|pluralize:"s" }} configurada{{ zone_data|length|pluralize:"s" }}</div>
+        </div>
+      </div>
+      <div class="hr"></div>
+
+      <!-- List of existing zones -->
+      <div class="cfg-zones">
+        {% for zd in zone_data %}
+        <div class="cfg-zone-row">
+          <form method="post" class="cfg-zone-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_zone">
+            <input type="hidden" name="zone_id" value="{{ zd.zone.id }}">
+
+            <input class="input cfg-zone-name" type="text" name="zone_name" value="{{ zd.zone.name }}" required>
+            <div class="cfg-zone-tables">
+              <span class="muted small">Mesas</span>
+              <input class="input cfg-zone-count" type="number" name="table_count" min="0" max="100" value="{{ zd.table_count }}">
+            </div>
+            <button class="btn primary cfg-zone-save" type="submit">Guardar</button>
+          </form>
+
+          <form method="post" onsubmit="return confirm('¿Eliminar área {{ zd.zone.name }}?')">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_zone">
+            <input type="hidden" name="zone_id" value="{{ zd.zone.id }}">
+            <button class="btn cfg-zone-del" type="submit">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" width="14" height="14">
+                <path d="M3 4h10M6 4V3h4v1M5 4l.5 9h5L11 4"/>
+              </svg>
+            </button>
+          </form>
+        </div>
+        {% empty %}
+        <div class="muted small" style="padding:8px 0;">No hay áreas. Crea la primera abajo.</div>
+        {% endfor %}
+      </div>
+
+      <div class="hr"></div>
+
+      <!-- New zone -->
+      <form method="post" class="cfg-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_zone">
+        <div class="cfg-section-head" style="margin-bottom:4px;">
+          <div>
+            <div class="title" style="font-size:14px;">Nueva área</div>
+          </div>
+        </div>
+        <div class="cfg-two">
+          <div class="cfg-field">
+            <label class="label">Nombre del área</label>
+            <input class="input" type="text" name="zone_name" placeholder="ej: Kiosco, Terraza…">
+          </div>
+          <div class="cfg-field">
+            <label class="label">Número de mesas</label>
+            <input class="input" type="number" name="table_count" min="1" max="100" value="1">
+          </div>
+        </div>
+        <div class="cfg-actions">
+          <button class="btn primary" type="submit">Crear área</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="cfg-side">
+    <div class="card sticky">
+      <div class="cfg-section-head">
+        <div class="cfg-icon cfg-icon--blue" style="width:36px;height:36px;border-radius:11px;">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="17" height="17">
+            <circle cx="10" cy="6" r="3.5"/>
+            <path d="M3 18c0-3.866 3.134-7 7-7s7 3.134 7 7"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title" style="font-size:14px;">{{ config.name }}</div>
+          <div class="muted small">Negocio activo</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="cfg-info-list">
+        <div class="cfg-info-row">
+          <span class="muted small">Propinas</span>
+          <span class="cfg-pill {% if config.tip_type == 'NONE' %}cfg-pill--off{% else %}cfg-pill--on{% endif %}">
+            {% if config.tip_type == "NONE" %}Desactivadas
+            {% elif config.tip_type == "FIXED" %}$ {{ config.tip_value|floatformat:0 }} fijo
+            {% elif config.tip_type == "PERCENT" %}{{ config.tip_value|floatformat:0 }}%
+            {% endif %}
+          </span>
+        </div>
+        <div class="cfg-info-row">
+          <span class="muted small">Áreas</span>
+          <span class="strong">{{ zone_data|length }}</span>
+        </div>
+        <div class="cfg-info-row">
+          <span class="muted small">Efectivo</span>
+          <span class="strong">{{ config.cash_label }}</span>
+        </div>
+        <div class="cfg-info-row">
+          <span class="muted small">Nequi</span>
+          <span class="strong">{{ config.nequi_label }}</span>
+        </div>
+        <div class="cfg-info-row">
+          <span class="muted small">Transferencia</span>
+          <span class="strong">{{ config.transfer_label }}</span>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+      <a class="btn" style="width:100%;justify-content:center;" href="{% url 'admin_dashboard' %}">← Regresar</a>
+    </div>
+  </aside>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ===== LAYOUT ===== */
+.cfg-layout {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+.cfg-main { display: flex; flex-direction: column; gap: 14px; }
+.cfg-side  { }
+
+/* ===== SECTION ===== */
+.cfg-section { display: flex; flex-direction: column; gap: 0; }
+
+.cfg-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cfg-icon {
+  width: 40px; height: 40px;
+  border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cfg-icon svg { width: 18px; height: 18px; }
+
+.cfg-icon--blue   { background: #dbeafe; color: #1e3a8a; }
+.cfg-icon--green  { background: #dcfce7; color: #166534; }
+.cfg-icon--amber  { background: #fef3c7; color: #92400e; }
+.cfg-icon--purple { background: #ede9fe; color: #5b21b6; }
+
+/* ===== FORM ===== */
+.cfg-form { display: flex; flex-direction: column; gap: 14px; }
+
+.cfg-field { display: flex; flex-direction: column; gap: 5px; }
+
+.cfg-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cfg-actions { display: flex; justify-content: flex-end; }
+
+/* ===== LOGO UPLOAD ===== */
+.cfg-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.cfg-upload:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.cfg-upload-preview {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.cfg-upload-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
+.cfg-upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.cfg-upload-label {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== PAYMENT METHODS ===== */
+.cfg-methods { display: flex; flex-direction: column; gap: 10px; }
+
+.cfg-method-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cfg-method-tag {
+  flex-shrink: 0;
+  width: 60px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .06em;
+  padding: 4px 0;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+.cfg-tag--cash     { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.cfg-tag--nequi    { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+.cfg-tag--transfer { background: #dbeafe; color: #1e3a8a; border-color: #bfdbfe; }
+
+/* ===== ZONES ===== */
+.cfg-zones { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+
+.cfg-zone-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fafbff;
+}
+
+.cfg-zone-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.cfg-zone-name  { flex: 1; min-width: 0; }
+.cfg-zone-count { width: 72px !important; max-width: 72px !important; min-width: 72px !important; text-align: center; }
+.cfg-zone-tables {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cfg-zone-save {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 0 12px;
+  height: 36px;
+}
+
+.cfg-zone-del {
+  flex-shrink: 0;
+  border-color: rgba(239,68,68,.35) !important;
+  color: #b91c1c !important;
+  padding: 0 10px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cfg-zone-del:hover {
+  border-color: rgba(239,68,68,.6) !important;
+  box-shadow: 0 8px 20px rgba(239,68,68,.12) !important;
+}
+
+/* ===== SIDEBAR INFO ===== */
+.cfg-info-list { display: flex; flex-direction: column; gap: 10px; }
+.cfg-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cfg-pill {
+  font-size: 11px;
+  font-weight: 900;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.cfg-pill--on  { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.cfg-pill--off { background: #f8fafc; color: var(--muted); }
+
+/* ===== TOAST ===== */
+.cfg-toast {
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 900;
+  border: 1px solid;
+}
+.cfg-toast--ok  { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.cfg-toast--err { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 860px) {
+  .cfg-layout { grid-template-columns: 1fr; }
+  .cfg-two { grid-template-columns: 1fr; }
+  .cfg-zone-row { flex-wrap: wrap; }
+}
+</style>
+<script>
+function previewLogo(input) {
+  const img      = document.getElementById("logoImg");
+  const ph       = document.getElementById("uploadPlaceholder");
+  const filename = document.getElementById("uploadFilename");
+
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      img.src = e.target.result;
+      img.style.display = "";
+      ph.style.display  = "none";
+    };
+    reader.readAsDataURL(input.files[0]);
+    filename.textContent = input.files[0].name;
+  }
+}
+</script>
+{% endblock %}

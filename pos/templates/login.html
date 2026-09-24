@@ -1,0 +1,137 @@
+<!-- Login screen, shown to any unauthenticated visitor. -->
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Iniciar sesión | Las Hamacas</title>
+
+  {% load static %}
+
+  <!-- PWA: home-screen shortcut -->
+  <link rel="manifest" href="{% static 'manifest.json' %}">
+  <meta name="theme-color" content="#d7263d">
+  <link rel="apple-touch-icon" href="{% static 'pos/icons/icon-192.png' %}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hamacas">
+
+  <link rel="stylesheet" href="{% static 'pos/base.css' %}?v=15">
+</head>
+
+<body>
+  <div class="container" style="max-width:520px;">
+
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-brand">
+          <img class="login-logo" src="{% static 'pos/logo.png' %}" alt="Las Hamacas">
+          <div>
+            <div class="login-title">Las Hamacas</div>
+            <div class="login-sub">Bienvenido, inicia sesión para continuar</div>
+          </div>
+        </div>
+
+        <div class="hr" style="margin-top:20px;"></div>
+
+        {% if error %}
+          <div class="alert danger">
+            <strong>Error:</strong> {{ error }}
+          </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'pos_login' %}">
+          {% csrf_token %}
+
+          <label class="label" for="username">Usuario</label>
+          <div class="field">
+            <span class="field-icon" aria-hidden="true">
+              <!-- user icon -->
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M20 21c0-4-4-7-8-7s-8 3-8 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </span>
+            <input class="input field-input" id="username" name="username" autocomplete="username"
+                   required placeholder="ej: mesero1"/>
+          </div>
+
+          <div style="height:10px;"></div>
+
+          <label class="label" for="password">Contraseña</label>
+          <div class="field">
+            <span class="field-icon" aria-hidden="true">
+              <!-- lock icon -->
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M6 11h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </span>
+
+            <input class="input field-input" type="password" id="password" name="password"
+                   autocomplete="current-password" required placeholder="••••••••"/>
+
+            <button type="button" class="field-action" id="togglePass" aria-label="Mostrar contraseña">
+              <span class="eye eye-show" id="eyeShow" aria-hidden="true">
+                <!-- eye -->
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2"/>
+                  <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </span>
+              <span class="eye eye-hide" id="eyeHide" aria-hidden="true" style="display:none;">
+                <!-- eye-off -->
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M10.6 10.6a2.5 2.5 0 0 0 3.5 3.5" stroke="currentColor" stroke-width="2"/>
+                  <path d="M9.1 5.5A10.8 10.8 0 0 1 12 5c6 0 10 7 10 7a18.3 18.3 0 0 1-4.4 5.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M6.3 8A18.5 18.5 0 0 0 2 12s4 7 10 7c1 0 2-.2 3-.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <span class="field-action-text" id="toggleText">Mostrar</span>
+            </button>
+          </div>
+
+          <div style="height:14px;"></div>
+
+          <button class="btn primary" type="submit" style="width:100%;">
+            Entrar
+          </button>
+
+          <div class="login-hint">
+            Si no puedes entrar, pide al administrador que revise tu usuario.
+          </div>
+        </form>
+      </div>
+
+      <div class="login-footer">
+        <span class="pill">
+          <span class="dot active"></span>
+          Wi-Fi del restaurante · Acceso interno
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    (function(){
+      const pass = document.getElementById("password");
+      const btn = document.getElementById("togglePass");
+      const text = document.getElementById("toggleText");
+      const eyeShow = document.getElementById("eyeShow");
+      const eyeHide = document.getElementById("eyeHide");
+
+      btn.addEventListener("click", () => {
+        const isPassword = pass.type === "password";
+        pass.type = isPassword ? "text" : "password";
+        text.textContent = isPassword ? "Ocultar" : "Mostrar";
+        eyeShow.style.display = isPassword ? "none" : "inline-flex";
+        eyeHide.style.display = isPassword ? "inline-flex" : "none";
+        btn.setAttribute("aria-label", isPassword ? "Ocultar contraseña" : "Mostrar contraseña");
+        pass.focus();
+      });
+    })();
+  </script>
+</body>
+</html>

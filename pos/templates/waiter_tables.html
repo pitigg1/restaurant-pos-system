@@ -1,0 +1,326 @@
+{# Waiter home screen: grid of tables per zone, live status via WebSocket. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Mesas | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block brand_title %}{{ business.name|default:"Sistema POS" }}{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Mesas · {{ total_tables }}</small>
+{% endblock %}
+
+{% block topbar %}
+<div class="topbar">
+  <div class="brand">
+    {% if business and business.logo %}
+      <img src="{{ business.logo.url }}" alt="{{ business.name }}">
+    {% else %}
+      <img src="{% static 'pos/logo.png' %}" alt="{{ business.name|default:'Logo' }}">
+    {% endif %}
+    <div style="min-width:0;">
+      <h1 style="margin:0;">{{ business.name|default:"Sistema POS" }}</h1>
+      <small class="muted">Mesas · {{ total_tables }}</small>
+    </div>
+  </div>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <span class="pill">Toque una mesa</span>
+    <a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Status legend -->
+<div class="tbl-legend">
+  <div class="tbl-leg-item"><span class="tbl-led" style="background:#94a3b8;"></span>Libre</div>
+  <div class="tbl-leg-item"><span class="tbl-led" style="background:#3b82f6;"></span>Nuevo</div>
+  <div class="tbl-leg-item"><span class="tbl-led" style="background:#f59e0b;"></span>Preparando</div>
+  <div class="tbl-leg-item"><span class="tbl-led" style="background:#22c55e;"></span>Listo</div>
+</div>
+
+{% for z in zones %}
+<section class="zone">
+  <div class="zone-header">
+    <span class="zone-badge">{{ z.name }}</span>
+    <span class="zone-count">{{ z.tables|length }} mesas</span>
+  </div>
+
+  <div class="zone-grid">
+    {% for t in z.tables %}
+    <a href="{% url 'waiter_order' z.slug t.n %}" class="table-link" id="tbl-{{ z.slug }}-{{ t.n }}">
+      <div class="table-card {% if t.status == 'NEW' %}status-new{% elif t.status == 'PREP' %}status-prep{% elif t.status == 'READY' %}status-ready{% endif %}">
+        <div class="tc-top-row">
+          <div class="tc-number">{{ t.n }}</div>
+        </div>
+        <div class="tc-label">Mesa</div>
+        <div class="tc-status">
+          {% if t.status == "NEW" %}
+          <span class="st-dot" style="background:#3b82f6;"></span>Nuevo
+          {% elif t.status == "PREP" %}
+          <span class="st-dot prep-pulse"></span>Preparando
+          {% elif t.status == "READY" %}
+          <span class="st-dot" style="background:#22c55e;"></span>Listo
+          {% else %}
+          <span class="st-dot" style="background:#cbd5e1;"></span>Libre
+          {% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% empty %}
+<div class="muted" style="margin-top:20px;">No hay zonas configuradas.</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ══ Legend ══ */
+.tbl-legend {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm);
+}
+.tbl-leg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+}
+.tbl-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ══ Zone header ══ */
+.zone-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 0 !important;
+  margin-top: 28px !important;
+  margin-bottom: 12px !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+.zone-badge {
+  font-size: 13px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
+  color: var(--brand) !important;
+  background: var(--brandSoft) !important;
+  border: 1.5px solid var(--brandLine) !important;
+  border-radius: var(--r-sm) !important;
+  padding: 5px 14px !important;
+}
+.zone-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ══ Grid: sizes itself to the available width ══ */
+.zone-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)) !important;
+  gap: 10px !important;
+  margin-top: 0 !important;
+}
+/* On tablet/desktop, cap it so columns don't get too narrow */
+@media (min-width: 700px) {
+  .zone-grid { grid-template-columns: repeat(6, minmax(0, 1fr)) !important; }
+}
+
+/* ══ Table card ══ */
+.table-link { text-decoration: none !important; }
+
+.table-card {
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: var(--r-md) !important;
+  padding: 14px 14px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 4px !important;
+  min-height: 90px !important;
+  border: 1.5px solid var(--line) !important;
+  background: var(--card) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: transform .18s cubic-bezier(.4,0,.2,1), box-shadow .18s cubic-bezier(.4,0,.2,1) !important;
+  cursor: pointer !important;
+}
+
+/* Top color bar */
+.table-card::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0; left: 0; right: 0 !important;
+  height: 4px !important;
+  background: #e2e8f0 !important;
+  border-radius: 16px 16px 0 0 !important;
+}
+
+/* Status colors */
+.table-card.status-new  { background: #eff6ff !important; border-color: #bfdbfe !important; }
+.table-card.status-prep { background: #fffbeb !important; border-color: #fde68a !important; }
+.table-card.status-ready{ background: #f0fdf4 !important; border-color: #bbf7d0 !important; }
+
+.table-card.status-new::before  { background: #3b82f6 !important; }
+.table-card.status-prep::before { background: #f59e0b !important; }
+.table-card.status-ready::before{ background: #22c55e !important; }
+
+/* Hover */
+.table-link:hover .table-card {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 8px 20px rgba(15,23,42,.1) !important;
+}
+.table-link:active .table-card { transform: scale(.97) !important; }
+
+/* Header row: number + badge */
+.tc-top-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  margin-top: 6px !important;
+}
+
+/* Table number */
+.tc-number {
+  font-size: 24px !important;
+  font-weight: 900 !important;
+  line-height: 1 !important;
+  letter-spacing: -0.03em !important;
+  color: var(--text) !important;
+}
+.table-card.status-new  .tc-number { color: #1d4ed8 !important; }
+.table-card.status-prep .tc-number { color: #b45309 !important; }
+.table-card.status-ready .tc-number { color: #15803d !important; }
+
+/* Full "Mesa X" label */
+.tc-label {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--muted) !important;
+  margin-top: 1px !important;
+  text-transform: uppercase !important;
+  letter-spacing: .04em !important;
+}
+
+/* Status badge */
+.tc-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  margin-top: auto !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  padding: 3px 9px !important;
+  border-radius: 999px !important;
+  background: rgba(0,0,0,.04) !important;
+  color: #64748b !important;
+}
+.table-card.status-new  .tc-status { background: #dbeafe !important; color: #1d4ed8 !important; }
+.table-card.status-prep .tc-status { background: #fef3c7 !important; color: #92400e !important; }
+.table-card.status-ready .tc-status { background: #dcfce7 !important; color: #15803d !important; }
+
+.st-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  flex-shrink: 0 !important;
+  display: inline-block !important;
+  background: #94a3b8 !important;
+}
+.st-dot.prep-pulse {
+  background: #f59e0b !important;
+  animation: pulse-amber 1.4s ease-in-out infinite !important;
+}
+@keyframes pulse-amber {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .5; transform: scale(.75); }
+}
+
+/* ══ Responsive: narrower columns on phones ══ */
+@media (max-width: 600px) {
+  .zone-grid { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)) !important; gap: 7px !important; }
+  .table-card {
+    min-height: 80px !important;
+    padding: 12px 10px 10px !important;
+    border-radius: 12px !important;
+  }
+  .table-card::before { border-radius: 12px 12px 0 0 !important; }
+  .tc-number { font-size: 18px !important; }
+  .tc-label { font-size: 10px !important; }
+  .tc-status { font-size: 10px !important; padding: 2px 7px !important; }
+  .tbl-legend { gap: 10px; padding: 8px 10px; }
+  .zone-badge { font-size: 12px !important; padding: 3px 9px !important; }
+}
+</style>
+<script>
+  let socket = null;
+  let retryCount = 0;
+  function connectWS() {
+    const proto = (window.location.protocol === "https:") ? "wss://" : "ws://";
+    const wsUrl = proto + window.location.host + "/ws/tables/";
+    socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log("WS conectado");
+      retryCount = 0;
+    };
+    socket.onclose = () => {
+      console.log("WS desconectado");
+      let d = Math.min(1000 * Math.pow(2, retryCount), 10000);
+      retryCount++;
+      setTimeout(connectWS, d);
+    };
+    socket.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.type === "table_status") {
+          let sl = payload.zone;
+          let tn = payload.table;
+          let st = payload.status;
+          let link = document.getElementById("tbl-" + sl + "-" + tn);
+          if (link) {
+            let badge = link.querySelector(".tc-status");
+            if (badge) {
+              if (st === "NEW") badge.innerHTML = '<span class="st-dot" style="background:#3b82f6;"></span>Nuevo';
+              else if (st === "PREP") badge.innerHTML = '<span class="st-dot prep-pulse"></span>Preparando';
+              else if (st === "READY") badge.innerHTML = '<span class="st-dot" style="background:#22c55e;"></span>Listo';
+              else badge.innerHTML = '<span class="st-dot" style="background:#cbd5e1;"></span>Libre';
+            }
+            let card = link.querySelector(".table-card");
+            if (card) {
+              card.classList.remove("status-new", "status-prep", "status-ready");
+              if (st === "NEW") card.classList.add("status-new");
+              else if (st === "PREP") card.classList.add("status-prep");
+              else if (st === "READY") card.classList.add("status-ready");
+            }
+          }
+        }
+      } catch (err) { }
+    };
+  }
+  connectWS();
+</script>
+{% endblock %}

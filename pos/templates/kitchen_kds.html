@@ -1,0 +1,215 @@
+{# Kitchen Display System: live order board, polls the API and listens on WS. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Cocina KDS | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/kitchen.css' %}?v=999">
+{% endblock %}
+
+{% block content_wrapper %}
+<div class="kds-wrap">
+
+  <div class="kds-header">
+    <div class="kds-title">
+      <h1>Cocina</h1>
+      <div class="kds-actions">
+        <a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+      </div>
+    </div>
+
+    <div class="kds-meta">
+      <span class="kds-pill" id="wsPill">
+        <span class="kds-dot off" id="wsDot"></span>
+        WS: <span id="wsText">desconectado</span>
+      </span>
+
+      <span class="kds-pill" id="apiPill">
+        <span class="kds-dot warn" id="apiDot"></span>
+        API: <span id="apiText">—</span>
+      </span>
+
+      <span class="kds-pill">
+        Última actualización: <span id="lastUpdate">—</span>
+      </span>
+
+      <button class="kds-btn" id="reloadBtn" type="button">Recargar ahora</button>
+    </div>
+  </div>
+
+  <div class="kds-grid" id="kdsGrid"></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // ===== helpers =====
+  function $(id) { return document.getElementById(id); }
+
+  function setWs(ok) {
+    $("wsText").textContent = ok ? "conectado" : "desconectado";
+    $("wsDot").className = "kds-dot " + (ok ? "ok" : "off");
+  }
+  function setApi(ok) {
+    $("apiText").textContent = ok ? "OK" : "ERROR";
+    $("apiDot").className = "kds-dot " + (ok ? "ok" : "off");
+  }
+  function setLastUpdate() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    $("lastUpdate").textContent = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function badgeHtml(status) {
+    const s = (status || "").toUpperCase();
+    if (s === "READY") return `<span class="kds-badge READY">LISTO</span>`;
+    if (s === "PREP") return `<span class="kds-badge PREP">PREPARANDO</span>`;
+    return `<span class="kds-badge NEW">NUEVO</span>`;
+  }
+
+  function cardHtml(o) {
+    const z = o.zone || "";
+    const t = o.table_number;
+    const s = (o.status || "NEW").toUpperCase();
+
+    const items = (o.items || []).map(it => {
+      const note = (it.notes || "").trim();
+      return `
+        <div class="kds-item">
+          <div>
+            <b>${it.quantity} × ${it.name}</b>
+            ${note ? `<div class="kds-note">Nota: ${note}</div>` : ``}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="kds-card status-${s}">
+        <div class="kds-card-top">
+          <div>
+            <h2>Mesa ${t} <span style="font-weight:700;color:var(--muted);">· ${z}</span></h2>
+            <div class="kds-sub">Pedido #${o.id} · Estado: ${s}</div>
+          </div>
+          ${badgeHtml(s)}
+        </div>
+
+        <div class="kds-items">${items || `<div class="kds-sub">Sin items</div>`}</div>
+
+        <div class="kds-btnrow">
+          <button class="kds-btn warn" type="button" onclick="setStatus(${o.id}, 'PREP')">Preparando</button>
+          <button class="kds-btn primary" type="button" onclick="setStatus(${o.id}, 'READY')">Listo</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function render(orders) {
+    const grid = $("kdsGrid");
+    if (!orders || orders.length === 0) {
+      grid.innerHTML = `<div class="kds-card"><h2 style="margin:0;">Sin pedidos</h2><div class="kds-sub">Todo al día ✅</div></div>`;
+      return;
+    }
+    grid.innerHTML = orders.map(cardHtml).join("");
+  }
+
+  // ===== Sound alert =====
+  let knownOrderIds = new Set();
+
+  function playBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [[880, 0], [1100, 0.25]].forEach(([freq, t]) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + t);
+        gain.gain.setValueAtTime(0.45, ctx.currentTime + t);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.4);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.4);
+      });
+    } catch(e) {}
+  }
+
+  // ===== API =====
+  async function loadOrders() {
+    try {
+      const res = await fetch("/pos/api/kitchen/orders/", { cache: "no-store" });
+      const data = await res.json();
+      setApi(res.ok);
+      if (res.ok) {
+        const orders = data || [];
+        // Detect newly arrived orders and beep
+        const newIds = new Set(orders.map(o => o.id));
+        let hasNew = false;
+        for (const id of newIds) {
+          if (!knownOrderIds.has(id)) { hasNew = true; break; }
+        }
+        if (hasNew && knownOrderIds.size > 0) playBeep();
+        knownOrderIds = newIds;
+        render(orders);
+        setLastUpdate();
+      }
+    } catch (e) {
+      setApi(false);
+    }
+  }
+
+  async function setStatus(orderId, status) {
+    // Reuses the shared order-status API endpoint
+    const csrftoken = (document.cookie.split("; ").find(x => x.startsWith("csrftoken=")) || "").split("=")[1] || "";
+
+    const res = await fetch(`/pos/api/orders/${orderId}/status/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrftoken
+      },
+      body: JSON.stringify({ status })
+    });
+
+    if (res.ok) {
+      // refresh to see the change immediately (safe even if WS also fires)
+      await loadOrders();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(d.detail || "Error actualizando estado");
+    }
+  }
+
+  $("reloadBtn").addEventListener("click", loadOrders);
+
+  // ===== WebSocket (kitchen) =====
+  function connectKitchenWS() {
+    const proto = (location.protocol === "https:") ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}/ws/kitchen/`);
+
+    ws.onopen = () => setWs(true);
+
+    ws.onmessage = (e) => {
+      // Any event triggers a full reload — simple and robust
+      try { JSON.parse(e.data); } catch { }
+      loadOrders();
+    };
+
+    ws.onclose = () => {
+      setWs(false);
+      setTimeout(connectKitchenWS, 1500);
+    };
+
+    ws.onerror = () => { try { ws.close(); } catch { } };
+  }
+
+  (async () => {
+    await loadOrders();
+    connectKitchenWS();
+    // fallback in case the WS connection drops: refresh every 5s
+    setInterval(loadOrders, 5000);
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,508 @@
+{# Admin screen: menu items and categories management (product list, bulk delete). #}
+{% extends "base.html" %}
+{% load static l10n %}
+
+{% block title %}Productos | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+<style>
+
+/* ══ New product ══ */
+.product-form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.5fr auto;
+  gap: 14px;
+  align-items: end;
+}
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-actions { display: flex; gap: 10px; align-items: center; height: 40px; }
+
+.pill-check {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 40px; padding: 0 16px;
+  background: #f1f5f9; border: 1.5px solid #e2e8f0; border-radius: 999px;
+  font-size: 13px; font-weight: 700; color: #64748b;
+  cursor: pointer; user-select: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.pill-check:has(input:checked) { background: #dcfce7; border-color: #22c55e; color: #16a34a; }
+.pill-check input { display: none; }
+
+/* ══ Categories ══ */
+.cat-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cat-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 10px 5px 14px;
+  border: 1.5px solid #e2e8f0; border-radius: 999px;
+  font-size: 13px; font-weight: 700; color: #334155; background: #fff;
+}
+.cat-del-btn {
+  background: none; border: none; cursor: pointer; color: #94a3b8;
+  font-size: 12px; line-height: 1; padding: 0;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; transition: background .12s, color .12s;
+}
+.cat-del-btn:hover { background: #fee2e2; color: #dc2626; }
+
+/* ══ List header ══ */
+.prod-list-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; gap: 12px;
+}
+.prod-list-title { font-size: 15px; font-weight: 800; color: #0f172a; }
+.prod-count-badge {
+  font-size: 12px; font-weight: 700; color: #64748b;
+  background: #f1f5f9; border-radius: 99px; padding: 2px 10px;
+}
+.check-all-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: #64748b;
+  cursor: pointer; user-select: none;
+}
+.check-all { width: 17px; height: 17px; accent-color: #1d4ed8; cursor: pointer; }
+
+/* ══ Desktop table ══ */
+.prod-table-wrap { overflow-x: auto; }
+.prod-table { width: 100%; border-collapse: collapse; min-width: 520px; }
+.prod-table thead tr { background: #f8fafc; border-bottom: 1.5px solid var(--line); }
+.prod-table th {
+  padding: 10px 14px;
+  font-size: 11px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.05em; color: #94a3b8; text-align: left; white-space: nowrap;
+}
+.prod-table th:last-child { text-align: right; }
+
+.prod-row { display: table-row; }
+.prod-row:hover .prod-cell { background: #f8fafc; }
+.prod-row.row-selected .prod-cell { background: #eff6ff; }
+.prod-cell {
+  display: table-cell; padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle; transition: background .12s;
+}
+.prod-row:last-child .prod-cell { border-bottom: none; }
+
+.row-check { width: 17px; height: 17px; accent-color: #1d4ed8; cursor: pointer; vertical-align: middle; }
+
+.prod-input {
+  height: 36px; border-radius: 10px;
+  border: 1.5px solid #e2e8f0; padding: 0 10px;
+  font-size: 13px; outline: none; background: #fff; width: 100%;
+  transition: border-color .15s;
+}
+.prod-input:focus { border-color: #1d4ed8; }
+.prod-input-name { min-width: 130px; }
+.prod-input-price { width: 92px; min-width: 76px; }
+.prod-input-cat { min-width: 120px; }
+
+.pill-check-sm {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 34px; padding: 0 13px;
+  background: #f1f5f9; border: 1.5px solid #e2e8f0; border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: #64748b;
+  cursor: pointer; user-select: none; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.pill-check-sm:has(input:checked) { background: #dcfce7; border-color: #22c55e; color: #16a34a; }
+.pill-check-sm input { display: none; }
+
+.btn-update {
+  height: 34px; padding: 0 14px; border-radius: 9px;
+  font-size: 12px; font-weight: 800; white-space: nowrap;
+  border: none; background: var(--brand); color: #fff; cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.btn-update:hover { background: #b31f34; }
+.btn-update:active { transform: scale(.97); }
+.td-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+
+/* ══ Mobile cards ══ */
+.prod-mobile { display: none; }
+
+@media (max-width: 699px) {
+  .prod-table-wrap { display: none; }
+  .prod-mobile {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 12px; background: #f1f5f9;
+    border-radius: 0 0 var(--r) var(--r);
+  }
+  .pmc {
+    background: #fff; border: 1.5px solid #e2e8f0; border-radius: 16px;
+    padding: 14px; display: flex; flex-direction: column; gap: 12px;
+    transition: border-color .15s, background .15s;
+  }
+  .pmc.row-selected { border-color: #bfdbfe; background: #eff6ff; }
+  .pmc-top { display: flex; align-items: center; gap: 10px; }
+  .pmc-info { flex: 1; min-width: 0; }
+  .pmc-name { font-size: 15px; font-weight: 800; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pmc-cat-badge {
+    font-size: 10px; font-weight: 700; color: #64748b;
+    background: #f1f5f9; border-radius: 5px; padding: 1px 7px; display: inline-block; margin-top: 2px;
+  }
+  .pmc-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pmc-full { grid-column: 1 / -1; }
+  .pmc-fields .field-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; display: block; margin-bottom: 4px; }
+  .pmc-fields .prod-input { height: 40px; font-size: 13px; }
+  .pmc-footer { display: flex; align-items: center; gap: 8px; }
+  .btn-update-sm {
+    flex: 1; height: 40px; border-radius: 12px;
+    font-size: 13px; font-weight: 800;
+    border: none; background: var(--brand); color: #fff; cursor: pointer;
+    transition: background .15s; text-align: center;
+  }
+  .btn-update-sm:active { background: #b31f34; }
+
+  .product-form-grid { grid-template-columns: 1fr; }
+  .form-actions { height: auto; }
+}
+
+/* ══ Floating selection toolbar ══ */
+.sel-toolbar {
+  position: fixed; bottom: 20px; left: 50%;
+  transform: translateX(-50%) translateY(90px);
+  z-index: 200;
+  background: #0f172a; color: #fff;
+  border-radius: 999px; padding: 10px 12px 10px 20px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 8px 32px rgba(15,23,42,.40);
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1), opacity .2s;
+  opacity: 0; pointer-events: none;
+  white-space: nowrap; font-size: 13px; font-weight: 700;
+}
+.sel-toolbar.visible { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+.sel-count { color: #94a3b8; font-size: 13px; font-weight: 700; }
+.sel-del-btn {
+  height: 36px; padding: 0 16px; border-radius: 999px; border: none;
+  background: #ef4444; color: #fff; font-size: 13px; font-weight: 800; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background .15s, transform .1s;
+}
+.sel-del-btn:hover { background: #dc2626; }
+.sel-del-btn:active { transform: scale(.97); }
+.sel-cancel-btn {
+  width: 34px; height: 34px; border-radius: 999px;
+  border: 1.5px solid #334155; background: transparent; color: #94a3b8;
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color .15s, color .15s;
+}
+.sel-cancel-btn:hover { border-color: #64748b; color: #fff; }
+
+.empty-state { padding: 48px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block brand_title %}Productos{% endblock %}
+{% block brand_subtitle %}
+<div class="muted small">Gestión de menú y categorías</div>
+{% endblock %}
+
+{% block drawer_bname %}Admin{% endblock %}
+{% block drawer_role %}{{ business.name }}{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn ghost nav-item" href="{% url 'admin_dashboard' %}">← Regresar</a>
+<a class="btn ghost nav-item nav-item-danger" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; flex-direction:column; gap:20px; padding-bottom:90px;">
+
+  <!-- ── New product ── -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="title">Nuevo producto</div>
+        <div class="muted small" style="margin-top:2px;">Añade un elemento al menú</div>
+      </div>
+    </div>
+    <div class="hr"></div>
+    <form method="post" class="product-form-grid">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="label">Nombre</label>
+        <input class="input" name="name" placeholder="Ej: Hamburguesa" required>
+      </div>
+      <div class="form-group">
+        <label class="label">Precio ($)</label>
+        <input class="input" type="number" step="any" name="price" placeholder="25000" required>
+      </div>
+      <div class="form-group">
+        <label class="label">Categoría</label>
+        <select name="category_id" class="input">
+          <option value="">— Sin categoría —</option>
+          {% for cat in categories %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-actions">
+        <label class="pill-check">
+          <input type="checkbox" name="available" checked>
+          <span>Disponible</span>
+        </label>
+        <button class="btn primary" type="submit">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Agregar
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Categories ── -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="title">Categorías</div>
+        <div class="muted small" style="margin-top:2px;">Agrupa tus productos por tipo</div>
+      </div>
+    </div>
+    <div class="hr"></div>
+
+    <form method="post" style="display:flex; gap:12px; align-items:flex-end;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create_category">
+      <div class="form-group" style="flex:1;">
+        <label class="label">Nueva categoría</label>
+        <input class="input" name="cat_name" placeholder="Ej: Bebidas" required>
+      </div>
+      <button class="btn primary" type="submit" style="flex-shrink:0;">Agregar</button>
+    </form>
+
+    {% if categories %}
+    <div class="cat-list">
+      {% for cat in categories %}
+      <form method="post" style="display:inline;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="delete_category">
+        <input type="hidden" name="cat_id" value="{{ cat.id }}">
+        <span class="cat-pill">
+          {{ cat.name }}
+          <button type="submit" class="cat-del-btn" title="Eliminar categoría">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </span>
+      </form>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="muted small" style="margin-top:4px;">No hay categorías. Crea una arriba.</div>
+    {% endif %}
+  </div>
+
+  <!-- ── Product list ── -->
+
+  <!-- Hidden form used for bulk delete -->
+  <form id="delete-form" method="post" style="display:none;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="bulk_delete">
+  </form>
+
+  <div class="card" style="overflow:hidden; padding:0;">
+    <div class="prod-list-head">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div>
+          <div class="prod-list-title">Lista de productos</div>
+          <div class="muted small" style="margin-top:1px;">Edición rápida</div>
+        </div>
+        <span class="prod-count-badge">{{ items|length }}</span>
+      </div>
+      <label class="check-all-label" title="Seleccionar todo">
+        <input type="checkbox" id="checkAll" class="check-all">
+        <span>Todos</span>
+      </label>
+    </div>
+    <div class="hr" style="margin:0;"></div>
+
+    <!-- Desktop table -->
+    <div class="prod-table-wrap">
+      <table class="prod-table">
+        <thead>
+          <tr>
+            <th style="width:44px;"></th>
+            <th>Nombre</th>
+            <th>Precio ($)</th>
+            <th>Categoría</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for it in items %}
+          <tr class="prod-row" id="trow-{{ it.id }}">
+            <form method="post" id="ef-{{ it.id }}" style="display:contents;">
+              {% csrf_token %}
+              <input type="hidden" name="id" value="{{ it.id }}">
+              <td class="prod-cell">
+                <input type="checkbox" name="ids[]" value="{{ it.id }}"
+                       form="delete-form" class="row-check" data-id="{{ it.id }}">
+              </td>
+              <td class="prod-cell">
+                <input class="prod-input prod-input-name" name="name" value="{{ it.name }}" required>
+              </td>
+              <td class="prod-cell">
+                <input class="prod-input prod-input-price" name="price" type="number" step="any"
+                       value="{{ it.price|unlocalize }}" required>
+              </td>
+              <td class="prod-cell">
+                <select name="category_id" class="prod-input prod-input-cat">
+                  <option value="">— Sin cat. —</option>
+                  {% for cat in categories %}
+                  <option value="{{ cat.id }}" {% if it.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td class="prod-cell">
+                <label class="pill-check-sm">
+                  <input type="checkbox" name="available" {% if it.available %}checked{% endif %}>
+                  <span>{% if it.available %}Activo{% else %}Inactivo{% endif %}</span>
+                </label>
+              </td>
+              <td class="prod-cell">
+                <div class="td-actions">
+                  <button class="btn-update" type="submit">Actualizar</button>
+                </div>
+              </td>
+            </form>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="empty-state">
+              <div class="muted">Aún no hay productos registrados.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="prod-mobile">
+      {% for it in items %}
+      <form method="post" class="pmc" id="mcard-{{ it.id }}">
+        {% csrf_token %}
+        <input type="hidden" name="id" value="{{ it.id }}">
+        <div class="pmc-top">
+          <input type="checkbox" name="ids[]" value="{{ it.id }}"
+                 form="delete-form" class="row-check"
+                 style="width:18px;height:18px;accent-color:#1d4ed8;flex-shrink:0;"
+                 data-id="{{ it.id }}">
+          <div class="pmc-info">
+            <div class="pmc-name">{{ it.name }}</div>
+            {% if it.category %}<span class="pmc-cat-badge">{{ it.category.name }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="pmc-fields">
+          <div class="form-group">
+            <label class="field-label">Nombre</label>
+            <input class="prod-input" name="name" value="{{ it.name }}" required>
+          </div>
+          <div class="form-group">
+            <label class="field-label">Precio ($)</label>
+            <input class="prod-input" name="price" type="number" step="any"
+                   value="{{ it.price|unlocalize }}" required>
+          </div>
+          <div class="form-group pmc-full">
+            <label class="field-label">Categoría</label>
+            <select name="category_id" class="prod-input">
+              <option value="">— Sin categoría —</option>
+              {% for cat in categories %}
+              <option value="{{ cat.id }}" {% if it.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="pmc-footer">
+          <label class="pill-check-sm">
+            <input type="checkbox" name="available" {% if it.available %}checked{% endif %}>
+            <span>{% if it.available %}Activo{% else %}Inactivo{% endif %}</span>
+          </label>
+          <button class="btn-update-sm" type="submit">Actualizar</button>
+        </div>
+      </form>
+      {% empty %}
+      <div class="empty-state"><div class="muted">Aún no hay productos registrados.</div></div>
+      {% endfor %}
+    </div>
+
+  </div><!-- /products card -->
+
+</div>
+
+<!-- Floating selection toolbar -->
+<div class="sel-toolbar" id="selToolbar">
+  <span class="sel-count"><span id="selCount">0</span> seleccionado<span id="selPlural">s</span></span>
+  <button type="submit" form="delete-form" class="sel-del-btn"
+          onclick="return confirm('¿Eliminar los productos seleccionados? Esta acción no se puede deshacer.')">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    Eliminar
+  </button>
+  <button type="button" class="sel-cancel-btn" id="selCancelBtn">✕</button>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const checkAll  = document.getElementById("checkAll");
+  const toolbar   = document.getElementById("selToolbar");
+  const selCount  = document.getElementById("selCount");
+  const selPlural = document.getElementById("selPlural");
+  const cancelBtn = document.getElementById("selCancelBtn");
+
+  function getChecks() {
+    return Array.from(document.querySelectorAll(".row-check"));
+  }
+
+  function updateToolbar() {
+    const checked = getChecks().filter(c => c.checked);
+    const n = checked.length;
+    selCount.textContent = n;
+    selPlural.textContent = n === 1 ? "" : "s";
+    toolbar.classList.toggle("visible", n > 0);
+
+    // Highlight selected rows / cards
+    getChecks().forEach(c => {
+      const row  = document.getElementById("trow-"  + c.dataset.id);
+      const card = document.getElementById("mcard-" + c.dataset.id);
+      if (row)  row.classList.toggle("row-selected", c.checked);
+      if (card) card.classList.toggle("row-selected", c.checked);
+    });
+
+    // "Select all" checkbox state
+    const total = getChecks().length;
+    if (checkAll) {
+      checkAll.indeterminate = n > 0 && n < total;
+      checkAll.checked = total > 0 && n === total;
+    }
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target.classList.contains("row-check")) {
+      updateToolbar();
+    }
+    // Update the Activo/Inactivo label when the checkbox changes
+    if (e.target.name === "available") {
+      const form = e.target.closest("form");
+      if (!form) return;
+      const span = form.querySelector(".pill-check-sm span, .pill-check span");
+      if (span) span.textContent = e.target.checked ? "Activo" : "Inactivo";
+    }
+  });
+
+  checkAll?.addEventListener("change", function () {
+    getChecks().forEach(c => { c.checked = this.checked; });
+    updateToolbar();
+  });
+
+  cancelBtn?.addEventListener("click", function () {
+    getChecks().forEach(c => { c.checked = false; });
+    if (checkAll) { checkAll.checked = false; checkAll.indeterminate = false; }
+    updateToolbar();
+  });
+})();
+</script>
+{% endblock %}

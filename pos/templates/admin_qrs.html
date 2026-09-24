@@ -1,0 +1,253 @@
+{# Admin screen: QR codes for waiter/kitchen/admin URLs, tied to the server's current IP. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}QR de acceso | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}QR de acceso{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Escanea para conectar dispositivos</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_dashboard' %}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div style="margin-top:14px; display:flex; flex-direction:column; gap:14px;">
+
+  <!-- IP info banner -->
+  <div class="qr-banner">
+    <div class="qr-banner-icon">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="10" cy="10" r="7"/>
+        <path d="M10 6v4l2.5 2.5"/>
+      </svg>
+    </div>
+    <div>
+      <div class="qr-banner-label">IP del servidor</div>
+      <div class="qr-banner-val">{{ base_url }}</div>
+    </div>
+    <div class="qr-banner-hint muted small">
+      Si cambias de WiFi o Hotspot, recarga esta página y los QR se actualizan solos.
+    </div>
+  </div>
+
+  <!-- QR grid -->
+  <div class="qr-grid">
+
+    <!-- Waiters -->
+    <div class="qr-card">
+      <div class="qr-card-head">
+        <div class="qr-role-icon qr-icon--waiter">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="10" cy="6" r="3"/><path d="M4 18c0-3.314 2.686-6 6-6s6 2.686 6 6"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Meseras</div>
+          <div class="muted small">Vista de mesas y pedidos</div>
+        </div>
+      </div>
+      <div class="qr-img-wrap">
+        <img class="qr-img" src="{% url 'admin_qr_png' %}?url={{ qr_urls.waiter|urlencode }}" alt="QR Meseras">
+      </div>
+      <div class="qr-url">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13">
+          <path d="M2 8h12M8 2l6 6-6 6"/>
+        </svg>
+        {{ qr_urls.waiter }}
+      </div>
+    </div>
+
+    <!-- Kitchen -->
+    <div class="qr-card">
+      <div class="qr-card-head">
+        <div class="qr-role-icon qr-icon--kitchen">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 3v6a4 4 0 0 0 8 0V3"/><path d="M10 13v4M7 17h6"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Cocina</div>
+          <div class="muted small">Pantalla KDS de cocina</div>
+        </div>
+      </div>
+      <div class="qr-img-wrap">
+        <img class="qr-img" src="{% url 'admin_qr_png' %}?url={{ qr_urls.kitchen|urlencode }}" alt="QR Cocina">
+      </div>
+      <div class="qr-url">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13">
+          <path d="M2 8h12M8 2l6 6-6 6"/>
+        </svg>
+        {{ qr_urls.kitchen }}
+      </div>
+    </div>
+
+    <!-- Admin -->
+    <div class="qr-card">
+      <div class="qr-card-head">
+        <div class="qr-role-icon qr-icon--admin">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.3L10 14.3l-4.8 2.5.9-5.3L2.2 7.7l5.4-.8z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="title">Admin</div>
+          <div class="muted small">Panel de administración</div>
+        </div>
+      </div>
+      <div class="qr-img-wrap">
+        <img class="qr-img" src="{% url 'admin_qr_png' %}?url={{ qr_urls.admin|urlencode }}" alt="QR Admin">
+      </div>
+      <div class="qr-url">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="13" height="13">
+          <path d="M2 8h12M8 2l6 6-6 6"/>
+        </svg>
+        {{ qr_urls.admin }}
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ===== BANNER ===== */
+.qr-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(2,6,23,.04);
+  flex-wrap: wrap;
+}
+
+.qr-banner-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--brandSoft);
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.qr-banner-icon svg { width: 20px; height: 20px; }
+
+.qr-banner-label {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.qr-banner-val {
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+}
+.qr-banner-hint {
+  margin-left: auto;
+  max-width: 300px;
+  text-align: right;
+}
+
+/* ===== GRID ===== */
+.qr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+/* ===== CARD ===== */
+.qr-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 4px 14px rgba(2,6,23,.05);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.qr-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(2,6,23,.09);
+}
+
+.qr-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Role icons */
+.qr-role-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.qr-role-icon svg { width: 20px; height: 20px; }
+
+.qr-icon--waiter  { background: #ede9fe; color: #5b21b6; }
+.qr-icon--kitchen { background: #fef3c7; color: #92400e; }
+.qr-icon--admin   { background: #dbeafe; color: #1e3a8a; }
+
+/* QR image */
+.qr-img-wrap {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-img {
+  width: 100%;
+  max-width: 200px;
+  display: block;
+  border-radius: 6px;
+}
+
+/* URL row */
+.qr-url {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.qr-url svg { flex-shrink: 0; color: var(--muted); }
+
+/* Responsive */
+@media (max-width: 980px) {
+  .qr-grid { grid-template-columns: 1fr; }
+  .qr-banner-hint { margin-left: 0; text-align: left; max-width: 100%; }
+  .qr-img { max-width: 260px; }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,1006 @@
+{# Waiter screen for a single table: menu, cart, live status via WebSocket, and payment modal. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Mesa {{ table }} | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block content_wrapper %}
+<div class="container" style="max-width:980px;">
+  <!-- Forces Django to set the csrftoken cookie -->
+  {% csrf_token %}
+
+  <div class="card" style="margin-top:14px;">
+    {% block topbar %}
+    <div class="topbar" style="gap:12px;">
+      <div class="brand" style="min-width:0;">
+        {% if business and business.logo %}
+        <img src="{{ business.logo.url }}" alt="{{ business.name }}">
+        {% else %}
+        <img src="{% static 'pos/logo.png' %}" alt="{{ business.name|default:'Logo' }}">
+        {% endif %}
+        <div style="min-width:0;">
+          <h1 style="margin:0; line-height:1.1;">Mesa {{ table }}</h1>
+          <div class="muted small" id="orderMeta">Cargando...</div>
+        </div>
+      </div>
+
+      <a class="btn ghost" href="{% url 'waiter_tables' %}">← Regresar</a>
+    </div>
+    {% endblock %}
+  </div>
+
+  <!-- Tabs: visible on mobile only -->
+  <div class="wo-tabs" id="woTabs">
+    <button class="wo-tab active" id="tabMenu" type="button" onclick="switchTab('menu')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      Menú
+    </button>
+    <button class="wo-tab" id="tabCart" type="button" onclick="switchTab('cart')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+      Pedido <span class="wo-tab-badge" id="cartTabBadge"></span>
+    </button>
+  </div>
+
+  <!-- Layout: 1 column on mobile, 2 on desktop -->
+  <div class="order-layout" style="margin-top:14px;">
+    <!-- MENU -->
+    <section class="card" id="menuPane">
+      <div class="card-head">
+        <div>
+          <div class="title">Menú</div>
+          <div class="muted small">Toque para agregar</div>
+        </div>
+        <span class="pill"><span class="dot active"></span>Disponible</span>
+      </div>
+
+      <div style="height:10px;"></div>
+
+      <input id="search" class="input" placeholder="Buscar..." inputmode="search" autocomplete="off">
+
+      <div id="menu" class="menu-list" style="margin-top:12px;"></div>
+    </section>
+
+    <!-- CART / ORDER -->
+    <section class="card wo-hidden" id="cartPane">
+      <!-- Header -->
+      <div class="card-head">
+        <div>
+          <div class="title">Pedido actual</div>
+          <div class="muted small">Agrega productos y luego guarda.</div>
+        </div>
+        <span class="pill" id="statusBadge"><span class="dot"></span>—</span>
+      </div>
+
+      <div style="height:10px;"></div>
+
+      <!-- Item list (scrolls internally) -->
+      <div id="cart" class="cart-scroll"></div>
+
+      <!-- Total -->
+      <div class="cart-total-bar">
+        <span class="cart-total-label">Total</span>
+        <span class="cart-total-amount">$<span id="total">0.00</span></span>
+      </div>
+
+      <!-- Main action -->
+      <button class="btn primary cart-save-btn" type="button" onclick="saveOrder()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Enviar / Guardar
+      </button>
+
+      <!-- Secondary actions -->
+      <div class="cart-secondary-row">
+        <button id="cancelBtn" class="btn cart-sec-btn" type="button" onclick="cancelOrder()">Anular</button>
+        <button id="payBtn" class="btn primary cart-pay-btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Cobrar
+        </button>
+      </div>
+
+      <div id="msg" style="margin-top:8px; font-size:13px; font-weight:600; color:#b91c1c;"></div>
+    </section>
+  </div>
+</div>
+
+<!-- Safe Django -> JS JSON handoff -->
+{{ table|json_script:"table-number" }}
+{{ zone|json_script:"zone-slug" }}
+
+<!-- PAYMENT MODAL -->
+<div id="payModal" class="modal" aria-hidden="true">
+  <div class="modal-backdrop" id="payBackdrop"></div>
+
+  <div class="modal-card pay-modal-card">
+    <!-- Header -->
+    <div class="pay-modal-head">
+      <div class="pay-modal-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="3"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <div class="pay-modal-title">Cobrar pedido</div>
+      <button class="pay-modal-close" id="closePay" type="button" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="pay-modal-body">
+      <!-- Prominent total -->
+      <div class="pay-total-block">
+        <div class="pay-total-label">TOTAL A COBRAR</div>
+        <div class="pay-total-amount">$<span id="payTotal">0</span></div>
+      </div>
+
+      <!-- Payment method -->
+      <div class="pay-methods-label">Método de pago</div>
+      <div class="pay-methods" id="payMethodBtns">
+        <button class="pay-method-btn active" type="button" data-value="CASH">
+          <span class="pay-method-icon">💵</span>
+          <span>{{ business.cash_label|default:"Efectivo" }}</span>
+        </button>
+        <button class="pay-method-btn" type="button" data-value="NEQUI">
+          <span class="pay-method-icon">📱</span>
+          <span>{{ business.nequi_label|default:"Nequi" }}</span>
+        </button>
+        <button class="pay-method-btn" type="button" data-value="TRANSFER">
+          <span class="pay-method-icon">🏦</span>
+          <span>{{ business.transfer_label|default:"Transferencia" }}</span>
+        </button>
+      </div>
+      <!-- Hidden input holding the selected method -->
+      <input type="hidden" id="payMethod" value="CASH">
+
+      <!-- Confirm -->
+      <button class="pay-confirm-btn" id="confirmPay" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Confirmar pago e imprimir
+      </button>
+
+      <div class="pay-hint">Marcará el pedido como pagado e imprimirá el ticket.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+/* ── Redesigned payment modal ── */
+.pay-modal-card {
+  border-radius: 24px !important;
+  overflow: hidden !important;
+  max-width: 380px !important;
+  width: calc(100vw - 32px) !important;
+}
+.pay-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.pay-modal-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--brandSoft);
+  color: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.pay-modal-title {
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  flex: 1;
+}
+.pay-modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.pay-modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Total */
+.pay-total-block {
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 18px 20px;
+  text-align: center;
+}
+.pay-total-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.pay-total-amount {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--text);
+}
+/* Method */
+.pay-methods-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.pay-methods {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.pay-method-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  border-radius: var(--r-md);
+  border: 2px solid var(--line);
+  background: var(--card);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  transition: border-color .15s, background .15s, color .15s, transform .12s;
+}
+.pay-method-btn .pay-method-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+.pay-method-btn.active {
+  border-color: var(--brand);
+  background: var(--brandSoft);
+  color: var(--brand);
+  transform: translateY(-1px);
+}
+.pay-method-btn:hover:not(.active) {
+  border-color: var(--brandLine);
+  background: var(--bg);
+}
+/* Confirm button */
+.pay-confirm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 52px;
+  border-radius: 16px;
+  border: none;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(215,38,61,.35);
+  transition: opacity .15s, transform .1s;
+}
+.pay-confirm-btn:hover { opacity: .93; }
+.pay-confirm-btn:active { transform: scale(.98); }
+.pay-confirm-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+.pay-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* ── Improved "Add" button ── */
+.menu-item .add {
+  height: 36px !important;
+  padding: 0 14px !important;
+  border-radius: 999px !important;
+  border: none !important;
+  background: var(--brand) !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+  font-size: 13px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 8px rgba(215,38,61,.30) !important;
+  transition: background .15s, transform .1s, box-shadow .15s !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+.menu-item .add::before {
+  content: '+' !important;
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+}
+.menu-item:hover .add {
+  background: #b31f34 !important;
+  box-shadow: 0 4px 14px rgba(215,38,61,.40) !important;
+}
+.menu-item:active .add {
+  transform: scale(.96) !important;
+}
+
+/* ── Redesigned order card ── */
+.cart-total-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0 10px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+.cart-total-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.cart-total-amount {
+  font-size: 26px;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+.cart-save-btn {
+  width: 100%;
+  height: 50px;
+  font-size: 15px;
+  gap: 8px;
+  border-radius: 14px;
+  margin-top: 10px;
+}
+.cart-secondary-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cart-sec-btn {
+  flex: 1;
+  height: 44px;
+  font-size: 13px;
+  border-radius: 12px;
+}
+.cart-pay-btn {
+  flex: 2;
+  height: 44px;
+  font-size: 13px;
+  gap: 6px;
+  border-radius: 12px;
+}
+.cart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 32px 16px;
+  color: var(--line);
+  text-align: center;
+}
+.cart-empty-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.cart-empty-sub {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: .8;
+}
+</style>
+  <script>
+    // ── Mobile tabs ──
+    function switchTab(tab) {
+      var menu = document.getElementById('menuPane');
+      var cart = document.getElementById('cartPane');
+      var tMenu = document.getElementById('tabMenu');
+      var tCart = document.getElementById('tabCart');
+      if (!menu || !cart) return;
+      if (tab === 'menu') {
+        menu.classList.remove('wo-hidden');
+        cart.classList.add('wo-hidden');
+        tMenu.classList.add('active');
+        tCart.classList.remove('active');
+      } else {
+        cart.classList.remove('wo-hidden');
+        menu.classList.add('wo-hidden');
+        tCart.classList.add('active');
+        tMenu.classList.remove('active');
+      }
+    }
+    // On desktop, both panes are always visible
+    function syncTabs() {
+      if (window.innerWidth >= 980) {
+        var menu = document.getElementById('menuPane');
+        var cart = document.getElementById('cartPane');
+        if (menu) menu.classList.remove('wo-hidden');
+        if (cart) cart.classList.remove('wo-hidden');
+      }
+    }
+    window.addEventListener('resize', syncTabs);
+
+    // Values passed in from Django
+    const TABLE = JSON.parse(document.getElementById("table-number").textContent);
+    const ZONE = JSON.parse(document.getElementById("zone-slug").textContent); // slug (guaduas, kiosco, etc.)
+
+    let menuItems = [];
+    let currentOrderId = null;
+    let currentStatus = null;
+
+    // cart: {menu_item_id, name, price, quantity, notes}
+    let cart = [];
+
+    // Robust CSRF cookie lookup (works on mobile too)
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === name + "=") {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+    const csrftoken = getCookie("csrftoken");
+
+    function money(n) {
+      const x = Number(n || 0);
+      return x.toFixed(2);
+    }
+
+    function setMsg(t) {
+      const el = document.getElementById("msg");
+      if (el) el.textContent = t || "";
+    }
+
+    function setBadge(status) {
+      const el = document.getElementById("statusBadge");
+      if (!el) return;
+      el.innerHTML = status
+        ? `<span class="dot active"></span>${status}`
+        : `<span class="dot"></span>—`;
+    }
+
+    // Enables/disables buttons based on the order's actual status
+    function refreshActions() {
+      const payBtn = document.getElementById("payBtn");
+      const cancelBtn = document.getElementById("cancelBtn");
+
+      // No order yet
+      if (!currentOrderId) {
+        if (payBtn) {
+          payBtn.disabled = true;
+          payBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Cobrar`;
+        }
+        if (cancelBtn) {
+          cancelBtn.disabled = true;
+          cancelBtn.style.display = "none";
+        }
+        return;
+      }
+
+      // Show "cancel" as long as it's NOT DONE/CANCELED
+      const canCancel = (currentStatus !== "DONE" && currentStatus !== "CANCELED");
+      if (cancelBtn) {
+        cancelBtn.style.display = canCancel ? "" : "none";
+        cancelBtn.disabled = !canCancel;
+      }
+
+      // "Pay" is only enabled when READY
+      const canPay = (currentStatus === "READY");
+      if (payBtn) {
+        payBtn.disabled = !canPay;
+        payBtn.innerHTML = canPay
+          ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Cobrar`
+          : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Cobrar`;
+      }
+    }
+
+    function renderMenu(filter = "") {
+      const wrap = document.getElementById("menu");
+      if (!wrap) return;
+
+      const f = (filter || "").trim().toLowerCase();
+      const list = menuItems.filter(m => (m.name || "").toLowerCase().includes(f));
+
+      if (list.length === 0) {
+        wrap.innerHTML = `<div class="muted">No hay resultados.</div>`;
+        return;
+      }
+
+      if (f) {
+        wrap.innerHTML = list.map(m => `
+          <button class="menu-item" type="button" onclick="addItem(${m.id})">
+            <div style="min-width:0;">
+              <b>${m.name}</b>
+              <div class="muted small">$${m.price}</div>
+            </div>
+            <span class="add">Agregar</span>
+          </button>
+        `).join("");
+        return;
+      }
+
+      // Grouping by category
+      const grouped = {};
+      const sinCat = [];
+
+      list.forEach(m => {
+        if (m.category) {
+          if (!grouped[m.category]) grouped[m.category] = [];
+          grouped[m.category].push(m);
+        } else {
+          sinCat.push(m);
+        }
+      });
+
+      let html = "";
+      Object.keys(grouped).forEach(cat => {
+        html += `<div style="font-weight:900; color:var(--text); padding: 8px 12px; margin-top:8px; background: rgba(0,0,0,0.03); border-radius: 8px; font-size: 14px; text-transform: uppercase;">${cat}</div>`;
+        html += grouped[cat].map(m => `
+          <button class="menu-item" type="button" onclick="addItem(${m.id})" style="margin-top: 5px;">
+            <div style="min-width:0;">
+              <b>${m.name}</b>
+              <div class="muted small">$${m.price}</div>
+            </div>
+            <span class="add">Agregar</span>
+          </button>
+         `).join("");
+      });
+
+      if (sinCat.length > 0) {
+        html += `<div style="font-weight:900; color:var(--text); padding: 8px 12px; margin-top:8px; background: rgba(0,0,0,0.03); border-radius: 8px; font-size: 14px; text-transform: uppercase;">Otros</div>`;
+        html += sinCat.map(m => `
+          <button class="menu-item" type="button" onclick="addItem(${m.id})" style="margin-top: 5px;">
+            <div style="min-width:0;">
+              <b>${m.name}</b>
+              <div class="muted small">$${m.price}</div>
+            </div>
+            <span class="add">Agregar</span>
+          </button>
+         `).join("");
+      }
+
+      wrap.innerHTML = html;
+    }
+
+    function renderCart() {
+      const wrap = document.getElementById("cart");
+      if (!wrap) return;
+
+      // Update the cart tab's badge count
+      const badge = document.getElementById("cartTabBadge");
+      if (badge) badge.textContent = cart.length > 0 ? cart.length : "";
+
+      if (cart.length === 0) {
+        wrap.innerHTML = `<div class="cart-empty">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+          <div class="cart-empty-title">Sin productos</div>
+          <div class="cart-empty-sub">Toca un ítem del menú para agregar</div>
+        </div>`;
+        const tot = document.getElementById("total");
+        if (tot) tot.textContent = "0.00";
+        return;
+      }
+
+      let total = 0;
+
+      wrap.innerHTML = cart.map((it, idx) => {
+        const line = Number(it.price) * it.quantity;
+        total += line;
+
+        const safeNotes = (it.notes || "").replaceAll('"', "&quot;");
+
+        return `
+        <div class="cart-item">
+          <div class="cart-head">
+            <div style="min-width:0;">
+              <div class="cart-title">${it.name}</div>
+              <div class="cart-sub">$${it.price}</div>
+            </div>
+            <div class="cart-line-total">$${money(line)}</div>
+          </div>
+
+          <div class="cart-notes">
+            <label>Notas</label>
+            <input class="input" placeholder="Ej: sin hielo, poco picante..."
+                   value="${safeNotes}"
+                   oninput="setNotes(${idx}, this.value)">
+          </div>
+
+          <div class="cart-actions">
+            <div class="qty">
+              <button class="qbtn" type="button" onclick="decQty(${idx})">-</button>
+              <b>${it.quantity}</b>
+              <button class="qbtn" type="button" onclick="incQty(${idx})">+</button>
+            </div>
+            <button class="remove" type="button" onclick="removeItem(${idx})">Quitar</button>
+          </div>
+        </div>
+      `;
+      }).join("");
+
+      const tot = document.getElementById("total");
+      if (tot) tot.textContent = money(total);
+    }
+
+    function addItem(menuId) {
+      const m = menuItems.find(x => x.id === menuId);
+      if (!m) return;
+
+      // if the same item with no notes is already in the cart, bump its qty
+      const existing = cart.find(x => x.menu_item_id === menuId && (x.notes || "") === "");
+      if (existing) {
+        existing.quantity += 1;
+        renderCart();
+        return;
+      }
+
+      cart.push({
+        menu_item_id: m.id,
+        name: m.name,
+        price: m.price,
+        quantity: 1,
+        notes: ""
+      });
+      renderCart();
+    }
+
+    function removeItem(i) { cart.splice(i, 1); renderCart(); }
+    function incQty(i) { cart[i].quantity += 1; renderCart(); }
+    function decQty(i) { cart[i].quantity = Math.max(1, cart[i].quantity - 1); renderCart(); }
+    function setNotes(i, v) { cart[i].notes = v; }
+
+    async function loadMenu() {
+      const res = await fetch("/pos/api/menu/");
+      menuItems = await res.json();
+      renderMenu();
+    }
+
+    async function loadActiveOrder() {
+      const res = await fetch(`/pos/api/orders/active/${ZONE}/${TABLE}/`);
+      const data = await res.json();
+
+      if (!data.order) {
+        currentOrderId = null;
+        currentStatus = null;
+
+        const meta = document.getElementById("orderMeta");
+        if (meta) meta.textContent = "Sin pedido activo (crea uno).";
+
+        setBadge(null);
+        cart = [];
+        renderCart();
+        refreshActions();
+        return;
+      }
+
+      currentOrderId = data.order.id;
+      currentStatus = data.order.status;
+
+      setBadge(currentStatus);
+
+      const meta = document.getElementById("orderMeta");
+      if (meta) meta.textContent = `Pedido #${currentOrderId} (${currentStatus})`;
+
+      cart = (data.order.items || []).map(it => ({
+        menu_item_id: it.menu_item_id,
+        name: it.name,
+        price: it.price,
+        quantity: it.quantity,
+        notes: it.notes || ""
+      }));
+
+      renderCart();
+      refreshActions();
+    }
+
+    async function saveOrder() {
+      setMsg("");
+
+      if (!ZONE) {
+        setMsg("Zona inválida");
+        return;
+      }
+      if (cart.length === 0) {
+        setMsg("Agrega items.");
+        return;
+      }
+
+      const payload = {
+        zone: ZONE,
+        table_number: TABLE,
+        items: cart.map(it => ({
+          menu_item_id: it.menu_item_id,
+          quantity: it.quantity,
+          notes: it.notes || ""
+        }))
+      };
+
+      const url = currentOrderId
+        ? `/pos/api/orders/${currentOrderId}/edit/`
+        : "/pos/api/orders/create/";
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrftoken
+        },
+        credentials: "same-origin",
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMsg(data.detail || "Error guardando.");
+        return;
+      }
+
+      await loadActiveOrder();
+      setMsg("✅ Guardado.");
+      setTimeout(() => setMsg(""), 1400);
+    }
+
+    async function cancelOrder() {
+      setMsg("");
+
+      if (!currentOrderId) {
+        setMsg("No hay pedido activo para anular.");
+        return;
+      }
+
+      const ok = confirm("¿Seguro que quieres ANULAR el pedido?");
+      if (!ok) return;
+
+      const reason = prompt("Motivo de anulación:");
+      if (reason === null) return;
+
+      const res = await fetch(`/pos/api/orders/${currentOrderId}/cancel/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrftoken
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ reason })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setMsg(data.detail || "Error anulando.");
+        return;
+      }
+
+      cart = [];
+      renderCart();
+      currentOrderId = null;
+      currentStatus = null;
+
+      const meta = document.getElementById("orderMeta");
+      if (meta) meta.textContent = "Pedido anulado.";
+
+      setBadge("CANCELED");
+      refreshActions();
+    }
+
+    const searchEl = document.getElementById("search");
+    if (searchEl) {
+      searchEl.addEventListener("input", (e) => renderMenu(e.target.value));
+    }
+
+    // ================================
+    // WebSocket: live status updates
+    // ================================
+    function connectWS() {
+      const proto = (location.protocol === "https:") ? "wss" : "ws";
+      const wsUrl = `${proto}://${location.host}/ws/orders/${ZONE}/${TABLE}/`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onmessage = async (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+
+        const payload = msg.payload || msg;
+        const newStatus = payload.status;
+        const oid = payload.order_id || payload.orderId || payload.order;
+
+        if (!newStatus) return;
+
+        if (!currentOrderId) {
+          await loadActiveOrder();
+          return;
+        }
+
+        if (!oid || Number(oid) === Number(currentOrderId)) {
+          currentStatus = newStatus;
+          setBadge(currentStatus);
+
+          const meta = document.getElementById("orderMeta");
+          if (meta) meta.textContent = `Pedido #${currentOrderId} (${currentStatus})`;
+
+          refreshActions();
+        } else {
+          await loadActiveOrder();
+        }
+      };
+
+      ws.onclose = () => setTimeout(connectWS, 1500);
+      ws.onerror = () => { try { ws.close(); } catch { } };
+    }
+
+    async function finishOrder() {
+      setMsg("");
+
+      if (!currentOrderId) {
+        setMsg("No hay pedido para finalizar.");
+        return;
+      }
+
+      const ok = confirm("¿Finalizar mesa y cerrar el pedido?");
+      if (!ok) return;
+
+      const res = await fetch(`/pos/api/orders/${currentOrderId}/finish/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrftoken
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({})
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.detail || "Error finalizando.");
+        return;
+      }
+
+      currentOrderId = null;
+      currentStatus = null;
+      cart = [];
+      renderCart();
+      setBadge("—");
+
+      const meta = document.getElementById("orderMeta");
+      if (meta) meta.textContent = "Mesa liberada ✅";
+
+      refreshActions();
+    }
+
+    // =======================
+    // PAYMENT / CHECKOUT
+    // =======================
+    const payBtn = document.getElementById("payBtn");
+    const payModal = document.getElementById("payModal");
+    const closePay = document.getElementById("closePay");
+    const confirmPay = document.getElementById("confirmPay");
+    const payMethod = document.getElementById("payMethod");
+    const payBackdrop = document.getElementById("payBackdrop");
+    const payTotal = document.getElementById("payTotal");
+
+    function fmtCOP(n) {
+      return Number(n || 0).toLocaleString("es-CO");
+    }
+
+    function getBaseTotal() {
+      const t = document.getElementById("total");
+      if (!t) return 0;
+      return Math.round(Number(t.textContent || "0") || 0);
+    }
+
+    function refreshPayTotal() {
+      if (!payTotal) return;
+      payTotal.textContent = fmtCOP(getBaseTotal());
+    }
+
+    function openPayModal() {
+      if (!payModal) return;
+      payModal.setAttribute("aria-hidden", "false");
+      refreshPayTotal();
+    }
+    function closePayModal() {
+      if (!payModal) return;
+      payModal.setAttribute("aria-hidden", "true");
+    }
+
+    // Payment method buttons
+    document.querySelectorAll(".pay-method-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".pay-method-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        if (payMethod) payMethod.value = btn.dataset.value;
+      });
+    });
+
+    payBtn?.addEventListener("click", () => {
+      if (!currentOrderId) return alert("No hay pedido activo.");
+      if (currentStatus !== "READY") return alert("El pedido debe estar LISTO para cobrar.");
+      openPayModal();
+    });
+
+    closePay?.addEventListener("click", closePayModal);
+    payBackdrop?.addEventListener("click", closePayModal);
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closePayModal();
+    });
+
+    confirmPay?.addEventListener("click", async () => {
+      if (!currentOrderId) return alert("No hay pedido activo para cobrar.");
+
+      confirmPay.disabled = true;
+      confirmPay.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg> Procesando...`;
+
+      try {
+        const res = await fetch(`/pos/api/orders/${currentOrderId}/pay/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrftoken
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            method: payMethod.value,
+            add_tip: false
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.detail || "Error cobrando.");
+        } else {
+          if (data.printed === false) {
+            alert("Se cobró, pero NO se pudo imprimir:\n" + (data.print_error || ""));
+          } else {
+            alert("✅ Pagado e impreso.");
+          }
+          closePayModal();
+          await loadActiveOrder();
+        }
+      } catch (e) {
+        alert("Error: " + e);
+      } finally {
+        confirmPay.disabled = false;
+        confirmPay.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Confirmar pago e imprimir`;
+      }
+    });
+
+    // init
+    (async () => {
+      await loadMenu();
+      await loadActiveOrder();
+      refreshActions();
+      connectWS();
+
+      const meta = document.getElementById("orderMeta");
+      if (meta && meta.textContent.trim() === "Cargando...") {
+        meta.textContent = "Listo.";
+      }
+    })();
+  </script>
+  {% endblock %}

@@ -1,0 +1,17 @@
+# Entorno / secretos
+.env
+venv/
+
+# Base de datos local
+db.sqlite3
+
+# Archivos generados
+staticfiles/
+media/
+logs/
+__pycache__/
+*.pyc
+
+# Editor / OS
+.claude/settings.local.json
+NUL

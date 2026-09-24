@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Eliminar usuario | Admin | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}Eliminar usuario{% endblock %}
+{% block brand_subtitle %}
+<small class="muted">Acción irreversible</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_users' %}">← Usuarios</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{# Confirmation page for permanently deleting a user. #}
+{% block content %}
+<!-- Card -->
+<div class="card" style="margin-top:14px; max-width:560px;">
+  <div class="title" style="font-size:16px;">
+    ¿Seguro que deseas eliminar este usuario?
+  </div>
+
+  <div class="hr"></div>
+
+  <div class="pill" style="margin-bottom:10px;">
+    <span class="dot active"></span>
+    {{ u.username }}
+  </div>
+
+  <div class="muted small">
+    Rol: <b>{{ u.role }}</b>
+    {% if u.is_superuser %} · Superusuario{% endif %}
+  </div>
+
+  <div class="hr"></div>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+      <a class="btn" href="{% url 'admin_users' %}">Cancelar</a>
+      <button class="btn danger" type="submit">
+        Sí, eliminar definitivamente
+      </button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

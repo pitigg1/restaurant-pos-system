@@ -1,0 +1,318 @@
+/* admin.css se carga siempre junto a base.css (body class="app").
+   Los tokens de color/radio/sombra viven en :root (base.css) y ya
+   cascadean aquí sin necesidad de redeclararlos; solo mantenemos un
+   alias para --shadow porque el resto de este archivo lo usa así. */
+.app{
+  --shadow: var(--shadow-lg);
+}
+
+/* =========================
+   LAYOUT ADMIN
+   ========================= */
+.app .admin-layout{
+  margin-top: 12px;
+  display:grid;
+  grid-template-columns: 1fr 340px;
+  gap: 12px;
+  align-items:start;
+}
+.app .admin-main{ display:flex; flex-direction:column; gap:12px; }
+.app .admin-side{ display:flex; flex-direction:column; gap:12px; }
+.app .admin-side .card{ background: linear-gradient(180deg,#ffffff,#fbfcff); }
+.app .sticky{ position: sticky; top: 12px; }
+
+@media (min-width: 980px){
+  .app .admin-layout{ grid-template-columns: 1fr 360px; }
+}
+@media (max-width: 980px){
+  .app .admin-layout{ grid-template-columns: 1fr; }
+  .app .sticky{ position: static; }
+}
+
+/* =========================
+   WIDGETS / KPIs (dashboard)
+   ========================= */
+.app .widgets{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.app .widget{
+  padding: 14px;
+  border-radius: var(--r);
+  border:1px solid var(--line);
+  background: linear-gradient(180deg, #fff, #fbfcff);
+  box-shadow: var(--shadow);
+}
+.app .wbig{
+  margin-top: 6px;
+  font-size: clamp(20px, 4vw, 28px);
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+@media (max-width: 560px){ .app .widgets{ grid-template-columns: 1fr; } }
+
+.app .kpi-grid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.app .kpi{
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #fff, #fbfcff);
+  border-radius: 14px;
+  padding: 12px;
+}
+.app .kpi-big{
+  margin-top: 6px;
+  font-size: clamp(18px, 4vw, 24px);
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+@media (max-width: 700px){ .app .kpi-grid{ grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px){ .app .kpi-grid{ grid-template-columns: 1fr; } }
+
+/* =========================
+   LISTAS / ITEMS GENÉRICOS
+   ========================= */
+.app .list{ display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+.app .item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg,#ffffff,#fbfcff);
+  border:1px solid var(--line);
+  text-decoration:none;
+  box-shadow: 0 10px 26px rgba(2,6,23,.06);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.app .item:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 18px 40px rgba(2,6,23,.10);
+  border-color: var(--brandLine);
+}
+.app .badge{
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 950;
+  border:1px solid rgba(15,23,42,.08);
+  background:#fff;
+  box-shadow: 0 10px 20px rgba(2,6,23,.06);
+}
+
+.app .pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border:1px solid var(--line);
+  background:#fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.app .chart-wrap{
+  height: 220px;
+  border-radius: 14px;
+  overflow:hidden;
+  border:1px solid var(--line);
+}
+
+.app .filters{ display:flex; flex-direction:column; gap:10px; }
+.app .filters-card{ padding: 14px; }
+
+/* =========================
+   ACCIONES DE TOPBAR
+   ========================= */
+.app .topbar-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+@media (max-width: 980px){
+  .app .topbar-actions{ width:100%; }
+  .app .topbar-actions .btn{ flex: 1 1 auto; }
+}
+
+/* =========================
+   MESEROS: grid + tarjeta
+   ========================= */
+.app .waiters-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
+}
+@media (max-width: 980px){ .app .waiters-grid{ grid-template-columns: 1fr; } }
+
+.app .waiter-card{
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  display:flex;
+  flex-direction:column;
+  gap: 12px;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.app .waiter-card:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 22px 55px rgba(2,6,23,.12);
+}
+.app .waiter-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+}
+.app .waiter-name{
+  font-weight: 950;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+.app .waiter-metrics{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 360px){ .app .waiter-metrics{ grid-template-columns: 1fr; } }
+
+.app .metric{
+  border:1px solid var(--line);
+  background: linear-gradient(180deg, #fff, #fbfcff);
+  border-radius: 14px;
+  padding: 10px;
+}
+.app .metric-big{
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+.app .waiter-actions{ display:flex; justify-content:flex-end; }
+
+.app .orders-mini{
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+/* =========================
+   FILAS / TARJETAS DE PEDIDOS (admin)
+   ========================= */
+.app .order-row{
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: #fff;
+  cursor:pointer;
+  text-align:left;
+  text-decoration:none;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.app .order-row:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(2,6,23,.08);
+  border-color: var(--brandLine);
+}
+.app .order-id{ font-weight: 950; }
+.app .orders-stack{ display:flex; flex-direction:column; gap: 10px; }
+
+.app .orders-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 700px){ .app .orders-grid{ grid-template-columns: 1fr; } }
+
+.app .order-card{
+  display:block;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #fff, #fbfcff);
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  text-decoration:none;
+}
+.app .order-card:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(2,6,23,.08);
+  border-color: var(--brandLine);
+}
+.app .order-top{ display:flex; justify-content:space-between; gap: 10px; align-items:flex-start; }
+.app .order-title{ font-weight: 950; font-size: 14px; }
+.app .order-right{ display:flex; flex-direction:column; align-items:flex-end; gap: 8px; }
+.app .order-total{ font-weight: 950; letter-spacing: -0.01em; }
+.app .order-meta{ margin-top: 10px; display:flex; gap: 8px; flex-wrap:wrap; }
+.app .meta-pill{
+  display:inline-flex;
+  align-items:center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--muted);
+}
+
+.app .two-cols{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 560px){ .app .two-cols{ grid-template-columns: 1fr; } }
+
+/* =========================
+   MODAL (burbuja emergente)
+   .modal-card comparte definición con base.css (420px por defecto).
+   Los modales de admin con más contenido usan el modificador
+   .modal-card--wide (también definido en base.css, 720px).
+   ========================= */
+.modal[aria-hidden="true"]{ display:none; }
+.modal{ position:fixed; inset:0; z-index: 9999; }
+.modal-backdrop{ position:absolute; inset:0; background: rgba(2,6,23,.55); }
+.modal-card{ margin: 14px auto; }
+.modal-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.modal-body{ max-height: min(70vh, 520px); overflow:auto; padding-right: 4px; }
+.modal-list{ display:flex; flex-direction:column; gap:10px; }
+.modal-item{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding: 12px;
+  border:1px solid var(--line);
+  border-radius: 14px;
+  background:#fff;
+}
+.mi-name{ font-weight: 900; }
+.mi-notes{ margin-top:4px; }
+.mi-price{ font-weight: 950; white-space:nowrap; }
+
+@media (max-width: 560px){
+  .modal-card{ width: calc(100% - 24px); margin: 8px auto; }
+}
+
+/* =========================
+   AJUSTES MÓVILES GENERALES
+   ========================= */
+@media (max-width: 700px){
+  .app .brand h1{ font-size: 14px; }
+  .app .topbar{ flex-wrap: nowrap; }
+}
+@media (max-width: 420px){
+  .app .card{ padding: 12px; }
+  .app .container{ padding: 0 10px; margin: 10px auto; }
+}

@@ -1,0 +1,294 @@
+{# Admin screen: single order detail, with inline item editing. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Pedido #{{ order.id }} | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
+{% endblock %}
+
+{% block brand_title %}Pedido #{{ order.id }}{% endblock %}
+{% block brand_subtitle %}
+<small class="muted" style="display:block; margin-top:2px;">
+  {{ order.zone }} · Mesa {{ order.table_number }}{% if order.waiter %} · {{ order.waiter.username }}{% endif %}
+</small>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{% url 'admin_orders' %}?{{ request.GET.urlencode }}">← Regresar</a>
+<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
+{% endblock %}
+
+{% block content %}
+<div style="margin-top:12px; display:flex; flex-direction:column; gap:14px; max-width:760px; margin-left:auto; margin-right:auto;">
+
+  <!-- SUMMARY -->
+  <div class="card od-summary-card">
+    <div class="od-summary-head">
+      <div class="od-meta">
+        <div class="muted small">{{ order.created_at|date:"d/m/Y H:i" }}</div>
+        <div class="od-badges">
+          <span class="od-badge od-badge--status">{{ order.status }}</span>
+          {% if order.is_paid %}
+          <span class="od-badge od-badge--paid"><span class="od-dot od-dot--green"></span>Pagado</span>
+          <span class="od-badge">
+            {% if order.payment_method == "CASH" %}Efectivo
+            {% elif order.payment_method == "NEQUI" %}Nequi
+            {% elif order.payment_method == "TRANSFER" %}Transferencia
+            {% else %}—{% endif %}
+          </span>
+          {% if order.paid_at %}<span class="od-badge od-badge--muted">{{ order.paid_at|date:"d/m/Y H:i" }}</span>{% endif %}
+          {% else %}
+          <span class="od-badge od-badge--pending"><span class="od-dot"></span>Pendiente</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="od-total">$ {{ total|floatformat:0 }}</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <!-- Items -->
+    <div class="od-items">
+      {% for it in order.items.all %}
+      <div class="od-item">
+        <div class="od-item-num">{{ forloop.counter }}</div>
+        <div class="od-item-name">{% if it.menu_item %}{{ it.menu_item.name }}{% else %}—{% endif %}</div>
+        <div class="od-item-right">
+          <span class="od-item-qty">×{{ it.quantity }}</span>
+          <span class="muted small">$ {% if it.menu_item %}{{ it.menu_item.price|floatformat:0 }}{% else %}0{% endif %}</span>
+        </div>
+      </div>
+      {% empty %}
+      <div class="muted small">Sin items.</div>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:14px;">
+      <button type="button" class="btn od-add-btn" onclick="scrollToEdit()">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" width="15" height="15">
+          <circle cx="10" cy="10" r="7"/><path d="M10 7v6M7 10h6"/>
+        </svg>
+        Agregar producto
+      </button>
+    </div>
+  </div>
+
+  <!-- EDIT ORDER -->
+  <div class="card" id="editSection">
+    <div class="od-edit-head">
+      <div class="od-edit-icon">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M11 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 0 1 0 3L10 14l-4 1 1-4 8.5-8.5z"/>
+        </svg>
+      </div>
+      <div class="title">Editar pedido</div>
+    </div>
+
+    <div class="hr"></div>
+
+    <!-- Search box -->
+    <div class="od-search-wrap">
+      <svg class="od-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="9" cy="9" r="6"/><path d="M15 15l-3-3"/>
+      </svg>
+      <input id="menuSearch" class="input od-search-input" type="text" placeholder="Buscar producto…">
+    </div>
+
+    <form method="post" action="{% url 'admin_order_update_items' order.id %}">
+      {% csrf_token %}
+
+      <div class="menu-list" id="menuGrid">
+        {% for row in menu_rows %}
+        {% with m=row.item %}
+        <div class="menu-row {% if not m.available %}is-unavailable{% endif %}{% if row.qty > 0 %} is-active{% endif %}"
+             data-name="{{ m.name|lower }}">
+          <div class="menu-row-left">
+            <div class="menu-row-name">{{ m.name }}</div>
+            <div class="menu-row-price">$ {{ m.price|floatformat:0 }}</div>
+          </div>
+          <input class="input qty-input" type="number" min="0" name="item_{{ m.id }}"
+            value="{{ row.qty }}" placeholder="0"
+            onchange="this.closest('.menu-row').classList.toggle('is-active', this.value > 0)">
+        </div>
+        {% endwith %}
+        {% endfor %}
+      </div>
+
+      <div class="form-actions">
+        <a class="btn" href="{% url 'admin_orders' %}?{{ request.GET.urlencode }}">Cancelar</a>
+        <button class="btn primary" type="submit">Guardar cambios</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    const input = document.getElementById("menuSearch");
+    const rows  = Array.from(document.querySelectorAll(".menu-row"));
+    function norm(s) { return (s || "").toLowerCase().trim(); }
+    function getQty(r) { return parseInt(r.querySelector(".qty-input").value || "0", 10); }
+
+    function applyFilter() {
+      const q = norm(input.value);
+      rows.forEach(r => {
+        const nameMatch = (r.dataset.name || "").includes(q);
+        const hasQty    = getQty(r) > 0;
+        r.style.display = (q ? nameMatch : hasQty) ? "" : "none";
+      });
+    }
+
+    input.addEventListener("input", applyFilter);
+    applyFilter(); // hide non-matching rows on initial load
+  })();
+
+  function scrollToEdit() {
+    const s = document.getElementById("editSection");
+    s.scrollIntoView({ behavior: "smooth", block: "start" });
+    s.classList.add("od-highlight");
+    setTimeout(() => s.classList.remove("od-highlight"), 1200);
+    setTimeout(() => document.getElementById("menuSearch").focus(), 400);
+  }
+</script>
+
+<style>
+/* SUMMARY */
+.od-summary-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+.od-meta { flex: 1; min-width: 0; }
+.od-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+
+.od-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--muted);
+}
+.od-badge--status  { background: #f1f5f9; color: var(--text); }
+.od-badge--paid    { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.od-badge--pending { background: #fefce8; border-color: #fde68a; color: #92400e; }
+.od-badge--muted   { opacity: .75; }
+
+.od-dot { width:7px; height:7px; border-radius:999px; background:#cbd5e1; flex-shrink:0; }
+.od-dot--green { background:#22c55e; }
+
+.od-total {
+  font-size: 28px;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  flex-shrink: 0;
+}
+
+/* ITEMS */
+.od-items { display: flex; flex-direction: column; gap: 2px; }
+
+.od-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.od-item:last-child { border-bottom: none; }
+
+.od-item-num {
+  width: 22px; height: 22px;
+  border-radius: 7px;
+  background: #f1f5f9;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 950; color: var(--muted);
+  flex-shrink: 0;
+}
+.od-item-name { flex: 1; font-weight: 950; font-size: 14px; min-width: 0; }
+.od-item-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.od-item-qty { font-size: 14px; font-weight: 950; }
+
+/* ADD BUTTON */
+.od-add-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: #dbeafe; border-color: #bfdbfe; color: #1e3a8a; font-weight: 950;
+}
+.od-add-btn:hover { background: #bfdbfe; box-shadow: 0 10px 24px rgba(30,58,138,.15) !important; }
+
+/* EDIT HEAD */
+.od-edit-head { display: flex; align-items: center; gap: 12px; }
+.od-edit-icon {
+  width: 40px; height: 40px;
+  border-radius: 13px;
+  background: #fef3c7; color: #92400e;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.od-edit-icon svg { width: 18px; height: 18px; }
+
+/* SEARCH BOX */
+.od-search-wrap { position: relative; margin-bottom: 12px; }
+.od-search-icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; color: var(--muted); pointer-events: none;
+}
+.od-search-input { padding-left: 36px !important; width: 100%; }
+
+/* MENU LIST */
+.menu-list { display: flex; flex-direction: column; gap: 0; margin-bottom: 14px; }
+
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  transition: background .1s ease;
+}
+.menu-row:hover { background: #f8fafc; }
+.menu-row.is-active { background: #eff6ff; }
+.menu-row.is-unavailable { opacity: .5; }
+
+.menu-row-left { flex: 1; min-width: 0; }
+.menu-row-name { font-weight: 950; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-row-price { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.qty-input {
+  width: 72px !important;
+  min-width: 72px !important;
+  max-width: 72px !important;
+  text-align: center;
+  font-weight: 950;
+  height: 36px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+@keyframes od-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(30,58,138,.35); }
+  70%  { box-shadow: 0 0 0 12px rgba(30,58,138,0); }
+  100% { box-shadow: 0 0 0 0 rgba(30,58,138,0); }
+}
+.od-highlight { animation: od-pulse .8s ease; }
+
+/* FORM ACTIONS */
+.form-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
+@media (max-width: 600px) {
+  .od-summary-head { flex-direction: column; }
+  .od-total { font-size: 22px; }
+}
+</style>
+{% endblock %}
