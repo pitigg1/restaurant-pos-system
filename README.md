@@ -1,4 +1,4 @@
-# POS System - Las Hamacas
+# Restaurant POS System 
 
 A complete restaurant point-of-sale system built for "Las Hamacas". It covers table management, real-time order tracking, a kitchen display, administration, and payments.
 
