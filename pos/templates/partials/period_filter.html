@@ -1,0 +1,47 @@
+{# Date-range filter used by the admin reports. Pass show_tip=True to add the tip selector. #}
+<form method="get" class="form" id="periodForm">
+  <div>
+    <span class="label">Periodo</span>
+    <div class="seg">
+      <label><input type="radio" name="period" value="today" {% if period == "today" %}checked{% endif %}><span>Hoy</span></label>
+      <label><input type="radio" name="period" value="month" {% if period == "month" %}checked{% endif %}><span>Mes</span></label>
+      <label><input type="radio" name="period" value="year" {% if period == "year" %}checked{% endif %}><span>Año</span></label>
+      <label><input type="radio" name="period" value="range" {% if period == "range" %}checked{% endif %}><span>Rango</span></label>
+    </div>
+  </div>
+  <div class="period-dates">
+    <div>
+      <label class="label" for="pf-start">Desde</label>
+      <input class="input" id="pf-start" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+    </div>
+    <div>
+      <label class="label" for="pf-end">Hasta</label>
+      <input class="input" id="pf-end" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+    </div>
+  </div>
+  {% if show_tip %}
+  <div>
+    <label class="label" for="pf-tip">Propina</label>
+    <select class="input" id="pf-tip" name="tip">
+      <option value="" {% if not tip %}selected{% endif %}>Todas</option>
+      <option value="1" {% if tip == "1" %}selected{% endif %}>Con propina</option>
+      <option value="0" {% if tip == "0" %}selected{% endif %}>Sin propina</option>
+    </select>
+  </div>
+  {% endif %}
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+  <button class="btn ink block" type="submit">Aplicar</button>
+</form>
+<script>
+  // Quick periods apply right away; editing a date switches to "Rango".
+  (function () {
+    var f = document.getElementById("periodForm");
+    if (!f) return;
+    f.querySelectorAll('input[name="period"]').forEach(function (r) {
+      r.addEventListener("change", function () { if (r.value !== "range") f.submit(); });
+    });
+    f.querySelectorAll('input[type="date"]').forEach(function (d) {
+      d.addEventListener("change", function () { f.querySelector('input[value="range"]').checked = true; });
+    });
+  })();
+</script>

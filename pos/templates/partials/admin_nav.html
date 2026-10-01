@@ -1,0 +1,12 @@
+{# Admin top navigation; highlights the current section. #}
+{% with n=request.resolver_match.url_name %}
+<a class="nav-link {% if n == 'admin_dashboard' %}is-active{% endif %}" href="{% url 'admin_dashboard' %}">Resumen</a>
+<a class="nav-link {% if n == 'admin_orders' or n == 'admin_order_detail' %}is-active{% endif %}" href="{% url 'admin_orders' %}">Pedidos</a>
+<a class="nav-link {% if n == 'admin_menu' %}is-active{% endif %}" href="{% url 'admin_menu' %}">Productos</a>
+<a class="nav-link {% if n == 'admin_accounts' %}is-active{% endif %}" href="{% url 'admin_accounts' %}">Caja</a>
+<a class="nav-link {% if n == 'admin_waiters' or n == 'admin_waiter_detail' %}is-active{% endif %}" href="{% url 'admin_waiters' %}">Meseros</a>
+<a class="nav-link {% if n == 'admin_users' or n == 'admin_user_edit' or n == 'admin_user_delete' %}is-active{% endif %}" href="{% url 'admin_users' %}">Usuarios</a>
+<a class="nav-link {% if n == 'admin_qrs' %}is-active{% endif %}" href="{% url 'admin_qrs' %}">QR</a>
+<a class="nav-link {% if n == 'admin_config' %}is-active{% endif %}" href="{% url 'admin_config' %}">Ajustes</a>
+<a class="nav-link is-exit" href="{% url 'pos_logout' %}">Salir</a>
+{% endwith %}

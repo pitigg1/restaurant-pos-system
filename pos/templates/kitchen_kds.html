@@ -1,123 +1,135 @@
-{# Kitchen Display System: live order board, polls the API and listens on WS. #}
+{# Kitchen Display System: pending orders in arrival order; polls the API and listens on WS. #}
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Cocina KDS | {{ business.name|default:"Sistema POS" }}{% endblock %}
+{% block title %}Cocina | {{ business.name|default:"Sistema POS" }}{% endblock %}
+{% block body_class %}kds{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{% static 'pos/kitchen.css' %}?v=999">
+<link rel="stylesheet" href="{% static 'pos/kitchen.css' %}?v=21">
 {% endblock %}
 
 {% block content_wrapper %}
+{% csrf_token %}
 <div class="kds-wrap">
 
-  <div class="kds-header">
+  <header class="kds-header">
     <div class="kds-title">
       <h1>Cocina</h1>
-      <div class="kds-actions">
-        <a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
-      </div>
+      <span class="kds-clock" id="clock">--:--</span>
     </div>
 
-    <div class="kds-meta">
-      <span class="kds-pill" id="wsPill">
-        <span class="kds-dot off" id="wsDot"></span>
-        WS: <span id="wsText">desconectado</span>
-      </span>
-
-      <span class="kds-pill" id="apiPill">
-        <span class="kds-dot warn" id="apiDot"></span>
-        API: <span id="apiText">—</span>
-      </span>
-
-      <span class="kds-pill">
-        Última actualización: <span id="lastUpdate">—</span>
-      </span>
-
-      <button class="kds-btn" id="reloadBtn" type="button">Recargar ahora</button>
+    <div class="kds-counts">
+      <span class="kds-count"><b id="cntNew">0</b>en cola</span>
+      <span class="kds-count"><b id="cntPrep">0</b>preparando</span>
     </div>
-  </div>
 
+    <div class="kds-right">
+      <span class="kds-conn" id="conn" title="Conexión en vivo"><i></i><span id="connText">Sin conexión</span></span>
+      <a class="btn small" href="{% url 'pos_logout' %}">Salir</a>
+    </div>
+  </header>
+
+  <div class="kds-rail"></div>
   <div class="kds-grid" id="kdsGrid"></div>
-
 </div>
+
+<div class="kds-toast" id="toast" hidden></div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-  // ===== helpers =====
-  function $(id) { return document.getElementById(id); }
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const LATE_MIN = 15;
 
-  function setWs(ok) {
-    $("wsText").textContent = ok ? "conectado" : "desconectado";
-    $("wsDot").className = "kds-dot " + (ok ? "ok" : "off");
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  function setApi(ok) {
-    $("apiText").textContent = ok ? "OK" : "ERROR";
-    $("apiDot").className = "kds-dot " + (ok ? "ok" : "off");
+  function hhmm(d) {
+    return d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
   }
-  function setLastUpdate() {
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    $("lastUpdate").textContent = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  function minutesSince(iso) {
+    const t = Date.parse(iso);
+    return isNaN(t) ? 0 : Math.max(0, Math.floor((Date.now() - t) / 60000));
   }
 
-  function badgeHtml(status) {
-    const s = (status || "").toUpperCase();
-    if (s === "READY") return `<span class="kds-badge READY">LISTO</span>`;
-    if (s === "PREP") return `<span class="kds-badge PREP">PREPARANDO</span>`;
-    return `<span class="kds-badge NEW">NUEVO</span>`;
+  function tickClock() { $("clock").textContent = hhmm(new Date()); }
+  tickClock();
+  setInterval(tickClock, 15000);
+
+  let toastTimer = null;
+  function toast(text, kind) {
+    const el = $("toast");
+    el.className = "kds-toast notice " + (kind || "ok");
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
   }
 
-  function cardHtml(o) {
-    const z = o.zone || "";
-    const t = o.table_number;
+  function setConn(ok) {
+    $("conn").classList.toggle("ok", ok);
+    $("connText").textContent = ok ? "En vivo" : "Sin conexión";
+  }
+
+  // ===== render =====
+  let orders = [];
+  let knownIds = null;      // null until the first load, so we don't beep on startup
+  const pending = new Set(); // order ids with a request in flight
+
+  function cardHtml(o, idx, fresh) {
     const s = (o.status || "NEW").toUpperCase();
+    const mins = minutesSince(o.created_at);
+    const late = mins >= LATE_MIN;
+    const arrived = o.created_at ? hhmm(new Date(o.created_at)) : "";
+    const busy = pending.has(o.id) ? "disabled" : "";
 
     const items = (o.items || []).map(it => {
       const note = (it.notes || "").trim();
       return `
         <div class="kds-item">
+          <span class="kds-qty">${it.quantity}</span>
           <div>
-            <b>${it.quantity} × ${it.name}</b>
-            ${note ? `<div class="kds-note">Nota: ${note}</div>` : ``}
+            <div class="kds-name">${esc(it.name)}</div>
+            ${note ? `<div class="kds-note">» ${esc(note)}</div>` : ""}
           </div>
-        </div>
-      `;
+        </div>`;
     }).join("");
 
+    const actions = s === "NEW"
+      ? `<button class="btn ink" type="button" data-id="${o.id}" data-status="PREP" ${busy}>Empezar</button>
+         <button class="btn go" type="button" data-id="${o.id}" data-status="READY" ${busy}>Listo</button>`
+      : `<button class="btn go" type="button" data-id="${o.id}" data-status="READY" ${busy}>Listo ✓</button>`;
+
     return `
-      <div class="kds-card status-${s}">
-        <div class="kds-card-top">
-          <div>
-            <h2>Mesa ${t} <span style="font-weight:700;color:var(--muted);">· ${z}</span></h2>
-            <div class="kds-sub">Pedido #${o.id} · Estado: ${s}</div>
-          </div>
-          ${badgeHtml(s)}
+      <article class="kds-card status-${s} ${late ? "is-late" : ""} ${fresh ? "arrived" : ""}" id="kc-${o.id}">
+        <div class="kds-top">
+          <span class="kds-pos">${idx + 1}°</span>
+          <span class="kds-time">llegó ${arrived}</span>
         </div>
-
-        <div class="kds-items">${items || `<div class="kds-sub">Sin items</div>`}</div>
-
-        <div class="kds-btnrow">
-          <button class="kds-btn warn" type="button" onclick="setStatus(${o.id}, 'PREP')">Preparando</button>
-          <button class="kds-btn primary" type="button" onclick="setStatus(${o.id}, 'READY')">Listo</button>
+        <div class="kds-table">Mesa ${o.table_number} <span class="kds-zone">· ${esc(o.zone)}</span></div>
+        <div class="kds-sub">
+          <span>#${o.id} · <span class="kds-elapsed">${mins} min</span></span>
+          <span class="tag ${s === "PREP" ? "prep" : "new"}">${s === "PREP" ? "Preparando" : "Nuevo"}</span>
         </div>
-      </div>
-    `;
+        <div class="kds-items">${items || `<span class="muted">Sin productos</span>`}</div>
+        <div class="kds-actions">${actions}</div>
+      </article>`;
   }
 
-  function render(orders) {
+  function render(fresh) {
     const grid = $("kdsGrid");
-    if (!orders || orders.length === 0) {
-      grid.innerHTML = `<div class="kds-card"><h2 style="margin:0;">Sin pedidos</h2><div class="kds-sub">Todo al día ✅</div></div>`;
+    $("cntNew").textContent = orders.filter(o => o.status === "NEW").length;
+    $("cntPrep").textContent = orders.filter(o => o.status === "PREP").length;
+    if (!orders.length) {
+      grid.innerHTML = `<div class="kds-empty"><b>Sin comandas pendientes</b><span class="muted">Los pedidos nuevos aparecen aquí en orden de llegada.</span></div>`;
       return;
     }
-    grid.innerHTML = orders.map(cardHtml).join("");
+    grid.innerHTML = orders.map((o, i) => cardHtml(o, i, fresh && fresh.has(o.id))).join("");
   }
 
-  // ===== Sound alert =====
-  let knownOrderIds = new Set();
-
+  // ===== sound =====
   function playBeep() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -133,83 +145,92 @@
         osc.start(ctx.currentTime + t);
         osc.stop(ctx.currentTime + t + 0.4);
       });
-    } catch(e) {}
+    } catch (e) { }
   }
 
   // ===== API =====
   async function loadOrders() {
     try {
       const res = await fetch("/pos/api/kitchen/orders/", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
       const data = await res.json();
-      setApi(res.ok);
-      if (res.ok) {
-        const orders = data || [];
-        // Detect newly arrived orders and beep
-        const newIds = new Set(orders.map(o => o.id));
-        let hasNew = false;
-        for (const id of newIds) {
-          if (!knownOrderIds.has(id)) { hasNew = true; break; }
-        }
-        if (hasNew && knownOrderIds.size > 0) playBeep();
-        knownOrderIds = newIds;
-        render(orders);
-        setLastUpdate();
-      }
+      // Server already sorts by arrival; keep that order as-is.
+      orders = (data || []).filter(o => o.status === "NEW" || o.status === "PREP");
+
+      const ids = new Set(orders.map(o => o.id));
+      const fresh = new Set();
+      if (knownIds) ids.forEach(id => { if (!knownIds.has(id)) fresh.add(id); });
+      if (fresh.size) playBeep();
+      knownIds = ids;
+      render(fresh);
     } catch (e) {
-      setApi(false);
+      setConn(false);
     }
+  }
+
+  function getCookie(name) {
+    const m = document.cookie.split(";").map(c => c.trim()).find(c => c.startsWith(name + "="));
+    return m ? decodeURIComponent(m.substring(name.length + 1)) : "";
   }
 
   async function setStatus(orderId, status) {
-    // Reuses the shared order-status API endpoint
-    const csrftoken = (document.cookie.split("; ").find(x => x.startsWith("csrftoken=")) || "").split("=")[1] || "";
+    pending.add(orderId);
+    render();
+    let data = {};
+    let ok = false;
+    try {
+      const res = await fetch(`/pos/api/orders/${orderId}/status/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": getCookie("csrftoken") },
+        credentials: "same-origin",
+        body: JSON.stringify({ status }),
+      });
+      ok = res.ok && !res.redirected;
+      data = res.redirected
+        ? { detail: "La sesión expiró. Vuelve a iniciar sesión." }
+        : await res.json().catch(() => ({}));
+    } catch (e) { }
+    pending.delete(orderId);
 
-    const res = await fetch(`/pos/api/orders/${orderId}/status/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": csrftoken
-      },
-      body: JSON.stringify({ status })
-    });
-
-    if (res.ok) {
-      // refresh to see the change immediately (safe even if WS also fires)
+    if (!ok) {
+      toast(data.detail || "No se pudo actualizar el pedido.", "err");
       await loadOrders();
+      return;
+    }
+
+    if (status === "READY") {
+      const card = $("kc-" + orderId);
+      const o = orders.find(x => x.id === orderId);
+      if (card) card.classList.add("leaving");
+      toast(o ? `Mesa ${o.table_number} lista — el mesero ya la ve.` : "Pedido listo.", "ok");
+      setTimeout(loadOrders, 250);
     } else {
-      const d = await res.json().catch(() => ({}));
-      alert(d.detail || "Error actualizando estado");
+      await loadOrders();
     }
   }
 
-  $("reloadBtn").addEventListener("click", loadOrders);
+  $("kdsGrid").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-status]");
+    if (!b || b.disabled) return;
+    setStatus(Number(b.dataset.id), b.dataset.status);
+  });
 
-  // ===== WebSocket (kitchen) =====
+  // ===== live updates =====
   function connectKitchenWS() {
     const proto = (location.protocol === "https:") ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws/kitchen/`);
-
-    ws.onopen = () => setWs(true);
-
-    ws.onmessage = (e) => {
-      // Any event triggers a full reload — simple and robust
-      try { JSON.parse(e.data); } catch { }
-      loadOrders();
-    };
-
-    ws.onclose = () => {
-      setWs(false);
-      setTimeout(connectKitchenWS, 1500);
-    };
-
-    ws.onerror = () => { try { ws.close(); } catch { } };
+    ws.onopen = () => setConn(true);
+    ws.onmessage = () => loadOrders();
+    ws.onclose = () => { setConn(false); setTimeout(connectKitchenWS, 1500); };
+    ws.onerror = () => { try { ws.close(); } catch (e) { } };
   }
 
   (async () => {
     await loadOrders();
     connectKitchenWS();
-    // fallback in case the WS connection drops: refresh every 5s
+    // Fallback in case the WS connection drops; also refreshes elapsed times.
     setInterval(loadOrders, 5000);
   })();
+})();
 </script>
 {% endblock %}

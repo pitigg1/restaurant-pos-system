@@ -5,10 +5,6 @@ from .models import (
 )
 
 
-# =============================================
-# Business config
-# =============================================
-
 @admin.register(BusinessConfig)
 class BusinessConfigAdmin(admin.ModelAdmin):
     list_display = ("name", "nit", "phone", "tip_type", "tip_value")
@@ -28,10 +24,6 @@ class BusinessConfigAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-
-# =============================================
-# Zones and tables
-# =============================================
 
 class TableInline(admin.TabularInline):
     model = Table
@@ -57,11 +49,6 @@ class TableAdmin(admin.ModelAdmin):
     list_filter = ("zone", "is_active")
     list_editable = ("is_active",)
 
-
-# =============================================
-# Menu categories and items
-# =============================================
-
 @admin.register(MenuCategory)
 class MenuCategoryAdmin(admin.ModelAdmin):
     list_display = ("name", "order", "is_active", "item_count")
@@ -80,9 +67,6 @@ class MenuItemAdmin(admin.ModelAdmin):
     ordering = ("name",)
 
 
-# =============================================
-# Orders
-# =============================================
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem

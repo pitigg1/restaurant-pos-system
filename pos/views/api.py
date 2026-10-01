@@ -72,6 +72,10 @@ def api_active_table_order(request, zone, table):
             "zone": order.zone,
             "table_number": order.table_number,
             "status": order.status,
+            "is_paid": order.is_paid,
+            "payment_method": order.payment_method,
+            "tip_amount": order.tip_amount,
+            "created_at": order.created_at.isoformat(),
             "items": [
                 {
                     "menu_item_id": it.menu_item_id,
@@ -484,12 +488,12 @@ def api_finish_order(request, order_id):
 
     if order.status != Order.Status.READY:
         return JsonResponse(
-            {"detail": f"Solo se puede finalizar cuando esté LISTO. Estado actual: {order.get_status_display()}"},
+            {"detail": f"Solo se puede liberar la mesa cuando cocina marque el pedido como LISTO. Estado actual: {order.get_status_display()}"},
             status=400
         )
 
     if not order.is_paid:
-        return JsonResponse({"detail": "El pedido debe estar pagado antes de finalizarlo"}, status=400)
+        return JsonResponse({"detail": "El pedido debe estar pagado antes de liberar la mesa"}, status=400)
 
     # Finish order
     order.status = Order.Status.DONE
@@ -522,12 +526,10 @@ def api_change_order_status(request, order_id):
 
     order = get_object_or_404(Order, id=order_id)
 
-    # Validate that the order isn't canceled or paid
+    # Canceled orders are frozen. Paid orders can still move through the
+    # kitchen, since the waiter may charge before the food is ready.
     if order.status == Order.Status.CANCELED:
         return JsonResponse({"detail": "No se puede cambiar el estado de un pedido cancelado"}, status=400)
-
-    if order.is_paid:
-        return JsonResponse({"detail": "No se puede cambiar el estado de un pedido ya pagado"}, status=400)
 
     payload = json_body(request)
     raw = (payload.get("status") or "").strip()
@@ -573,10 +575,14 @@ def api_change_order_status(request, order_id):
             status=400
         )
 
-    # Validate allowed status transitions
-    if order.status == Order.Status.DONE and status != Order.Status.DONE:
+    # Statuses only move forward (NEW -> PREP -> READY -> DONE), so an order
+    # marked READY can't be sent back to PREP from the kitchen screen.
+    rank = {Order.Status.NEW: 0, Order.Status.PREP: 1, Order.Status.READY: 2, Order.Status.DONE: 3}
+    if status == order.status:
+        return JsonResponse({"ok": True, "order_id": order.id, "status": order.status})
+    if rank[status] < rank.get(order.status, 0):
         return JsonResponse(
-            {"detail": "No se puede revertir un pedido finalizado"},
+            {"detail": f"El pedido ya está {order.get_status_display().upper()}, no se puede regresar"},
             status=400
         )
 
@@ -781,6 +787,9 @@ def api_pay_order(request, order_id):
     if order.status == Order.Status.CANCELED:
         return JsonResponse({"detail": "No se puede pagar un pedido cancelado"}, status=400)
 
+    if order.status == Order.Status.DONE:
+        return JsonResponse({"detail": "No se puede pagar un pedido finalizado"}, status=400)
+
     if order.is_paid:
         return JsonResponse({"detail": "Este pedido ya fue pagado"}, status=400)
 
@@ -844,12 +853,12 @@ def api_pay_order(request, order_id):
     order.tip_amount = int(tip_amount or 0)
     order.has_tip = order.tip_amount > 0
 
-    order.status = Order.Status.DONE
-
+    # The table stays occupied (status unchanged) until the waiter taps
+    # "Liberar mesa", which calls api_finish_order.
     order.save(update_fields=[
         "is_paid", "payment_method", "paid_at", "paid_by",
         "tip_amount", "has_tip",
-        "status", "updated_at"
+        "updated_at"
     ])
 
     try:
@@ -870,6 +879,9 @@ def api_pay_order(request, order_id):
         f"total=${total_with_tip:,.0f}, usuario={request.user.username}"
     )
 
+    # Notify screens before printing, so a printer failure doesn't hide the payment
+    _ws_send_table_status(order)
+
     # Print the receipt
     try:
         _print_receipt_usb(order, valid_methods[method], tip_amount=tip_amount)
@@ -884,5 +896,4 @@ def api_pay_order(request, order_id):
         )
         return JsonResponse({"ok": True, "printed": False, "print_error": str(e)})
 
-    _ws_send_table_status(order)
     return JsonResponse({"ok": True, "printed": True})

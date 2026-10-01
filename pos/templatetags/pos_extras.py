@@ -11,3 +11,13 @@ def get_item(d, k):
         return d.get(k)
     except Exception:
         return None
+
+# Colombian peso formatting: 48000 -> "$ 48.000".
+@register.filter
+def cop(value):
+    try:
+        n = int(round(float(value or 0)))
+    except (TypeError, ValueError):
+        return value
+    sign = "-" if n < 0 else ""
+    return f"{sign}$ {abs(n):,}".replace(",", ".")

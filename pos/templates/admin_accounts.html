@@ -1,0 +1,69 @@
+{# Admin screen: cash closing — paid totals per payment method for the selected period. #}
+{% extends "admin_base.html" %}
+{% load pos_extras %}
+
+{% block title %}Caja | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2 class="page-title">Caja</h2>
+    <div class="page-sub">Cuadre por método de pago · {{ start|date:"d/m/Y" }}{% if start != end %} → {{ end|date:"d/m/Y" }}{% endif %}</div>
+  </div>
+  <button type="button" class="btn ghost small" onclick="window.print()">Imprimir</button>
+</div>
+
+<div class="layout">
+  <div class="stack">
+    <section class="panel">
+      <div class="panel-head"><span class="title">Cobrado por método</span></div>
+      {% if grand_total %}
+      <table class="dtable">
+        <thead>
+          <tr>
+            <th>Método</th>
+            <th class="r">Pedidos</th>
+            <th class="r">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{ business.cash_label|default:"Efectivo" }}</td>
+            <td class="r money" data-label="Pedidos">{{ count.CASH }}</td>
+            <td class="r money strong" data-label="Total">{{ totals.CASH|cop }}</td>
+          </tr>
+          <tr>
+            <td>{{ business.nequi_label|default:"Nequi" }}</td>
+            <td class="r money" data-label="Pedidos">{{ count.NEQUI }}</td>
+            <td class="r money strong" data-label="Total">{{ totals.NEQUI|cop }}</td>
+          </tr>
+          <tr>
+            <td>{{ business.transfer_label|default:"Transferencia" }}</td>
+            <td class="r money" data-label="Pedidos">{{ count.TRANSFER }}</td>
+            <td class="r money strong" data-label="Total">{{ totals.TRANSFER|cop }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="panel-body">
+        <div class="rlines">
+          <div class="rline total">
+            <div class="leader"><span>Total cobrado</span><span class="amt">{{ grand_total|cop }}</span></div>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty"><b>Sin cobros</b>No hay pedidos cobrados en este periodo.</div>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside>
+    <section class="panel">
+      <div class="panel-head"><span class="title">Periodo</span></div>
+      <div class="panel-body">
+        {% include "partials/period_filter.html" %}
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}
