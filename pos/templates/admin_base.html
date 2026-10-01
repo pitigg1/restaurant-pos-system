@@ -1,0 +1,37 @@
+{# Shared shell for every admin screen: admin styles, admin nav, two-step confirm buttons. #}
+{% extends "base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=35">
+{% endblock %}
+
+{% block brand_title %}{{ business.name|default:"Sistema POS" }}{% endblock %}
+{% block brand_subtitle %}Administración{% endblock %}
+{% block drawer_role %}Administración{% endblock %}
+
+{% block topbar_actions %}
+{% include "partials/admin_nav.html" %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Destructive buttons with class "confirm-btn" need two taps: the first
+  // one arms the button (shows data-confirm text), the second submits.
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest(".confirm-btn");
+    if (!b) return;
+    if (b.classList.contains("armed")) return;
+    e.preventDefault();
+    b.dataset.original = b.innerHTML;
+    b.textContent = b.dataset.confirm || "¿Seguro?";
+    b.classList.add("armed");
+    setTimeout(function () {
+      if (!b.classList.contains("armed")) return;
+      b.classList.remove("armed");
+      b.innerHTML = b.dataset.original;
+    }, 4000);
+  });
+</script>
+{% block admin_js %}{% endblock %}
+{% endblock %}

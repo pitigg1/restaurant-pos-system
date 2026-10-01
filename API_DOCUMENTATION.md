@@ -281,7 +281,7 @@ POST /pos/api/orders/<order_id>/cancel/
 
 ### Finish an order
 
-Marks an order as `DONE`. The order must be `READY` and already paid.
+"Liberar mesa": marks an order as `DONE` and frees the table. The order must be `READY` and already paid.
 
 ```
 POST /pos/api/orders/<order_id>/finish/
@@ -307,10 +307,10 @@ POST /pos/api/orders/<order_id>/finish/
 
 **Error examples (400):**
 ```json
-{ "detail": "Solo se puede finalizar cuando esté LISTO. Estado actual: En preparación" }
+{ "detail": "Solo se puede liberar la mesa cuando cocina marque el pedido como LISTO. Estado actual: En preparación" }
 ```
 ```json
-{ "detail": "El pedido debe estar pagado antes de finalizarlo" }
+{ "detail": "El pedido debe estar pagado antes de liberar la mesa" }
 ```
 
 ---
@@ -328,8 +328,8 @@ POST /pos/api/orders/<order_id>/status/
 
 **Restrictions:**
 - Kitchen staff can only set `PREP` or `READY`
-- Cannot change status on a canceled or already-paid order
-- Cannot revert a finished order (`DONE`)
+- Cannot change status on a canceled order (paid orders can still be cooked)
+- Statuses only move forward (`NEW` → `PREP` → `READY` → `DONE`); going back returns 400
 
 **Body (JSON):**
 ```json
@@ -388,7 +388,7 @@ GET /pos/api/kitchen/orders/
 ]
 ```
 
-Excludes orders with status `CANCELED` or `DONE`.
+Only returns orders still pending in the kitchen (`NEW` and `PREP`), oldest first. Each order includes `created_at`.
 
 ---
 
@@ -396,7 +396,7 @@ Excludes orders with status `CANCELED` or `DONE`.
 
 ### Process a payment
 
-Marks an order as paid, computes the tip, prints the receipt, and marks the order as `DONE`.
+Marks an order as paid, computes the tip and prints the receipt. The order keeps its status (the table stays occupied) until the waiter calls the finish endpoint ("Liberar mesa"). Allowed for any open order (`NEW`, `PREP` or `READY`).
 
 ```
 POST /pos/api/orders/<order_id>/pay/

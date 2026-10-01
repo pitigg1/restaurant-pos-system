@@ -103,6 +103,7 @@ def _ws_send_table_status(order: Order, status_override: str | None = None):
     Notifies over WebSocket:
     - The global "tables" group (tables overview screen)
     - The table-specific "table_<zoneSlug>_<table>" group (single table screen)
+    - The "kitchen" group (KDS reloads its board on any event)
     """
     try:
         channel_layer = get_channel_layer()
@@ -111,7 +112,9 @@ def _ws_send_table_status(order: Order, status_override: str | None = None):
         payload = {
             "type": "table_status",
             "order_id": order.id,
-            "status": (status_override or order.status),
+            "status": (status_override if status_override is not None else order.status),
+            "is_paid": order.is_paid,
+            "since": order.created_at.isoformat() if order.created_at else "",
             "zone": zone_slug,
             "table": order.table_number,
         }
@@ -124,6 +127,11 @@ def _ws_send_table_status(order: Order, status_override: str | None = None):
         async_to_sync(channel_layer.group_send)(
             f"table_{zone_slug}_{order.table_number}",
             {"type": "table_event", "payload": payload}
+        )
+
+        async_to_sync(channel_layer.group_send)(
+            "kitchen",
+            {"type": "kitchen_event", "data": payload}
         )
     except Exception as e:
         print("WS broadcast failed:", str(e))

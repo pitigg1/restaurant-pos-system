@@ -526,3 +526,213 @@ class PermissionsTest(TestCase):
         response = self.client.get(reverse('admin_dashboard'))
         # Should redirect or return 403.
         self.assertIn(response.status_code, [302, 403])
+
+
+# =============================================================================
+# TABLE LIFECYCLE: charge, then free the table
+# =============================================================================
+
+class TableLifecycleTest(TestCase):
+    """Paying keeps the table occupied; the waiter frees it once the order is READY."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        # No receipt printer in tests
+        patcher = patch("pos.views.api._print_receipt_usb")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.client = Client()
+        self.waiter = User.objects.create_user(username="mesero1", password="test123", role=User.Role.WAITER)
+        self.cook = User.objects.create_user(username="cocina1", password="test123", role=User.Role.KITCHEN)
+        self.item = MenuItem.objects.create(name="Arepa", price=Decimal("8000"), available=True)
+        self.order = Order.objects.create(zone="Kiosco", table_number=1, waiter=self.waiter, status=Order.Status.NEW)
+        OrderItem.objects.create(order=self.order, menu_item=self.item, quantity=1)
+
+    def _set_status(self, status):
+        self.client.login(username="cocina1", password="test123")
+        return self.client.post(
+            reverse("api_change_order_status", kwargs={"order_id": self.order.id}),
+            data={"status": status}, content_type="application/json",
+        )
+
+    def _pay(self):
+        self.client.login(username="mesero1", password="test123")
+        return self.client.post(
+            reverse("api_pay_order", kwargs={"order_id": self.order.id}),
+            data={"method": "CASH"}, content_type="application/json",
+        )
+
+    def _finish(self):
+        self.client.login(username="mesero1", password="test123")
+        return self.client.post(
+            reverse("api_finish_order", kwargs={"order_id": self.order.id}),
+            data={}, content_type="application/json",
+        )
+
+    def test_pay_does_not_free_table(self):
+        self.assertEqual(self._pay().status_code, 200)
+        self.order.refresh_from_db()
+        self.assertTrue(self.order.is_paid)
+        self.assertEqual(self.order.status, Order.Status.NEW)
+
+    def test_paid_order_can_still_be_cooked(self):
+        self._pay()
+        self.assertEqual(self._set_status("PREP").status_code, 200)
+        self.assertEqual(self._set_status("READY").status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.READY)
+
+    def test_free_table_requires_ready_and_paid(self):
+        self._pay()
+        self.assertEqual(self._finish().status_code, 400)  # not READY yet
+        self._set_status("READY")
+        self.assertEqual(self._finish().status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.DONE)
+
+    def test_free_table_requires_payment(self):
+        self._set_status("READY")
+        self.assertEqual(self._finish().status_code, 400)
+
+    def test_kitchen_cannot_go_back_to_prep(self):
+        self._set_status("READY")
+        self.assertEqual(self._set_status("PREP").status_code, 400)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, Order.Status.READY)
+
+    def test_kitchen_board_hides_ready_orders(self):
+        later = Order.objects.create(zone="Kiosco", table_number=2, waiter=self.waiter, status=Order.Status.PREP)
+        self._set_status("READY")
+        res = self.client.get(reverse("kitchen_orders_api"))
+        ids = [o["id"] for o in res.json()]
+        self.assertEqual(ids, [later.id])
+
+    def test_kitchen_board_is_in_arrival_order(self):
+        second = Order.objects.create(zone="Kiosco", table_number=2, waiter=self.waiter, status=Order.Status.PREP)
+        self.client.login(username="cocina1", password="test123")
+        ids = [o["id"] for o in self.client.get(reverse("kitchen_orders_api")).json()]
+        self.assertEqual(ids, [self.order.id, second.id])
+
+
+class TipTest(TestCase):
+    """The waiter decides per charge whether the customer leaves the admin-configured tip."""
+
+    def setUp(self):
+        from unittest.mock import patch
+        patcher = patch("pos.views.api._print_receipt_usb")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        BusinessConfig.objects.create(pk=1, tip_type=BusinessConfig.TipType.PERCENT, tip_value=10)
+        self.waiter = User.objects.create_user(username="mesero1", password="test123", role=User.Role.WAITER)
+        self.client = Client()
+        self.client.login(username="mesero1", password="test123")
+        item = MenuItem.objects.create(name="Bandeja", price=Decimal("40500"), available=True)
+        self.order = Order.objects.create(zone="Kiosco", table_number=1, waiter=self.waiter, status=Order.Status.READY)
+        OrderItem.objects.create(order=self.order, menu_item=item, quantity=1)
+
+    def _pay(self, add_tip):
+        return self.client.post(
+            reverse("api_pay_order", kwargs={"order_id": self.order.id}),
+            data={"method": "CASH", "add_tip": add_tip}, content_type="application/json",
+        )
+
+    def test_percent_tip_when_customer_accepts(self):
+        self.assertEqual(self._pay(True).status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.tip_amount, 4050)  # 10% of 40.500
+        self.assertTrue(self.order.has_tip)
+
+    def test_no_tip_when_customer_declines(self):
+        self._pay(False)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.tip_amount, 0)
+        self.assertFalse(self.order.has_tip)
+
+    def test_order_page_exposes_tip_rules_and_active_order_tip(self):
+        res = self.client.get(reverse("waiter_order", kwargs={"zone": "kiosco", "table": 1}))
+        self.assertContains(res, 'id="tip-type"')
+        self.assertContains(res, '"PERCENT"')
+        self._pay(True)
+        data = self.client.get(reverse("api_active_table_order", kwargs={"zone": "kiosco", "table": 1})).json()
+        self.assertEqual(data["order"]["tip_amount"], 4050)
+
+
+class AdminMenuTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        User.objects.create_user(username="admin1", password="admin12345", role=User.Role.ADMIN)
+        self.client.login(username="admin1", password="admin12345")
+        self.cat = MenuCategory.objects.create(name="Bebidas")
+        self.item = MenuItem.objects.create(name="Limonada", price=Decimal("5000"), available=True, category=self.cat)
+
+    def test_toggle_available(self):
+        url = reverse("admin_menu")
+        self.client.post(url, {"action": "toggle_available", "id": self.item.id})
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.available)
+        self.client.post(url, {"action": "toggle_available", "id": self.item.id})
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.available)
+
+    def test_categories_reorder_and_new_go_last(self):
+        url = reverse("admin_menu")
+        self.client.post(url, {"action": "create_category", "cat_name": "Entradas"})
+        names = lambda: list(MenuCategory.objects.order_by("order", "name").values_list("name", flat=True))
+        self.assertEqual(names(), ["Bebidas", "Entradas"])
+        entradas = MenuCategory.objects.get(name="Entradas")
+        self.client.post(url, {"action": "move_category", "cat_id": entradas.id, "dir": "up"})
+        self.assertEqual(names(), ["Entradas", "Bebidas"])
+        # Already first: moving up again changes nothing
+        self.client.post(url, {"action": "move_category", "cat_id": entradas.id, "dir": "up"})
+        self.assertEqual(names(), ["Entradas", "Bebidas"])
+        # The waiter's menu follows the same order
+        MenuItem.objects.create(name="Empanada", price=Decimal("3000"), available=True, category=entradas)
+        cats = [m["category"] for m in self.client.get("/pos/api/menu/").json()]
+        self.assertEqual(cats, ["Entradas", "Bebidas"])
+
+    def test_admin_pages_render(self):
+        order = Order.objects.create(zone="Kiosco", table_number=1, waiter=User.objects.get(username="admin1"))
+        OrderItem.objects.create(order=order, menu_item=self.item, quantity=2)
+        waiter = User.objects.create_user(username="m1", password="1234", role=User.Role.WAITER)
+        for name, kwargs in [
+            ("admin_dashboard", {}), ("admin_menu", {}), ("admin_users", {}),
+            ("admin_orders", {}), ("admin_order_detail", {"order_id": order.id}),
+            ("admin_waiters", {}), ("admin_waiter_detail", {"user_id": waiter.id}),
+            ("admin_user_edit", {"user_id": waiter.id}), ("admin_user_delete", {"user_id": waiter.id}),
+            ("admin_qrs", {}), ("admin_config", {}), ("admin_accounts", {}),
+        ]:
+            res = self.client.get(reverse(name, kwargs=kwargs))
+            self.assertEqual(res.status_code, 200, name)
+
+
+class SalesAnalyticsTest(TestCase):
+    """The sales chart groups by the restaurant's local day and only counts paid orders."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(username="admin1", password="admin12345", role=User.Role.ADMIN)
+        self.client.login(username="admin1", password="admin12345")
+        self.item = MenuItem.objects.create(name="Arepa", price=Decimal("10000"), available=True)
+
+    def _order(self, local_dt, paid):
+        o = Order.objects.create(zone="Kiosco", table_number=1, waiter=self.admin, is_paid=paid, payment_method="CASH" if paid else "")
+        OrderItem.objects.create(order=o, menu_item=self.item, quantity=1)
+        Order.objects.filter(id=o.id).update(created_at=local_dt)
+        return o
+
+    def test_late_night_order_counts_for_local_day(self):
+        from datetime import datetime, time
+        today = timezone.localdate()
+        tz = timezone.get_current_timezone()
+        # 22:30 in Bogotá is already the next day in UTC
+        self._order(timezone.make_aware(datetime.combine(today, time(22, 30)), tz), paid=True)
+        self._order(timezone.make_aware(datetime.combine(today, time(12, 0)), tz), paid=True)
+        self._order(timezone.make_aware(datetime.combine(today, time(13, 0)), tz), paid=False)
+
+        data = self.client.get(reverse("admin_analytics"), {"period": "today"}).json()
+        self.assertEqual(data["labels"], [today.strftime("%Y-%m-%d")])
+        self.assertEqual(data["totals"], [20000.0])
+        self.assertEqual(data["summary"]["paid_total"], 20000.0)
+        self.assertEqual(data["summary"]["orders_count"], 3)
+        self.assertEqual(data["summary"]["by_method"]["CASH"], 20000.0)

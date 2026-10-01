@@ -25,27 +25,21 @@ def waiter_tables(request):
     # Build a name -> slug map for the active zones
     zone_name_to_slug = {z.name: z.slug for z in active_zones}
 
-    # Latest non-canceled order status per table, newest first so the
-    # first match per key wins (skipped further down).
-    latest_status = {}
+    # Open order per table (anything not DONE/CANCELED), newest first so the
+    # first match per key wins.
+    latest = {}
     rows = (
         Order.objects
-        .exclude(status=Order.Status.CANCELED)
+        .filter(status__in=[Order.Status.NEW, Order.Status.PREP, Order.Status.READY])
         .order_by("-created_at")
-        .values("zone", "table_number", "status")
+        .values("zone", "table_number", "status", "is_paid", "created_at")
     )
 
     for r in rows:
         zslug = zone_name_to_slug.get(r["zone"], slugify_simple(r["zone"]))
         key = f"{zslug}:{r['table_number']}"
-        if key in latest_status:
-            continue
-
-        st = r["status"] or ""
-        if st == getattr(Order.Status, "DONE", "DONE"):
-            st = ""
-
-        latest_status[key] = st
+        if key not in latest:
+            latest[key] = r
 
     zones = []
     total_tables = 0
@@ -56,8 +50,14 @@ def waiter_tables(request):
 
         for t in active_tables:
             key = f"{z.slug}:{t.number}"
-            st = latest_status.get(key, "")
-            tables.append({"n": t.number, "key": key, "status": st})
+            o = latest.get(key)
+            tables.append({
+                "n": t.number,
+                "key": key,
+                "status": o["status"] if o else "",
+                "is_paid": bool(o and o["is_paid"]),
+                "since": o["created_at"].isoformat() if o else "",
+            })
 
         zones.append({"name": z.name, "slug": z.slug, "tables": tables})
         total_tables += len(tables)

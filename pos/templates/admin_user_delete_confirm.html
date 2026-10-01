@@ -1,54 +1,35 @@
-{% extends "base.html" %}
-{% load static %}
-
-{% block title %}Eliminar usuario | Admin | {{ business.name|default:"Sistema POS" }}{% endblock %}
-
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'pos/admin.css' %}?v=26">
-{% endblock %}
-
-{% block brand_title %}Eliminar usuario{% endblock %}
-{% block brand_subtitle %}
-<small class="muted">Acción irreversible</small>
-{% endblock %}
-
-{% block topbar_actions %}
-<a class="btn" href="{% url 'admin_users' %}">← Usuarios</a>
-<a class="btn ghost" href="{% url 'pos_logout' %}">Salir</a>
-{% endblock %}
-
 {# Confirmation page for permanently deleting a user. #}
+{% extends "admin_base.html" %}
+
+{% block title %}Eliminar usuario | {{ business.name|default:"Sistema POS" }}{% endblock %}
+
 {% block content %}
-<!-- Card -->
-<div class="card" style="margin-top:14px; max-width:560px;">
-  <div class="title" style="font-size:16px;">
-    ¿Seguro que deseas eliminar este usuario?
+<div class="page-head">
+  <div>
+    <h2 class="page-title">Eliminar usuario</h2>
+    <div class="page-sub">Esta acción no se puede deshacer</div>
   </div>
-
-  <div class="hr"></div>
-
-  <div class="pill" style="margin-bottom:10px;">
-    <span class="dot active"></span>
-    {{ u.username }}
-  </div>
-
-  <div class="muted small">
-    Rol: <b>{{ u.role }}</b>
-    {% if u.is_superuser %} · Superusuario{% endif %}
-  </div>
-
-  <div class="hr"></div>
-
-  <form method="post">
-    {% csrf_token %}
-
-    <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
-      <a class="btn" href="{% url 'admin_users' %}">Cancelar</a>
-      <button class="btn danger" type="submit">
-        Sí, eliminar definitivamente
-      </button>
-    </div>
-  </form>
 </div>
 
+<section class="panel narrow" style="max-width:560px;">
+  <div class="panel-body">
+    <div class="who">
+      <span class="monogram lg {{ u.role }}">{{ u.username|slice:":1" }}</span>
+      <div>
+        <div class="who-name" style="font-size:20px;">{{ u.username }}</div>
+        <div class="small muted">{{ u.get_role_display }}{% if u.is_superuser %} · superusuario{% endif %}</div>
+      </div>
+    </div>
+    <div class="hr"></div>
+    <p class="small" style="margin:0;">
+      Se borra la cuenta. Los pedidos que haya tomado se eliminan junto con ella.
+      Si solo quieres que deje de entrar, mejor <a href="{% url 'admin_user_edit' u.id %}" style="text-decoration:underline;">desactívalo</a>.
+    </p>
+  </div>
+  <form method="post" class="panel-foot">
+    {% csrf_token %}
+    <a class="btn" href="{% url 'admin_users' %}">Cancelar</a>
+    <button class="btn primary" type="submit">Sí, eliminar</button>
+  </form>
+</section>
 {% endblock %}

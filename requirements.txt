@@ -47,3 +47,5 @@ tzdata==2025.2
 ujson==5.11.0
 uritemplate==4.1.1
 zope.interface==8.2
+python-decouple==3.8
+python-json-logger==4.2.0

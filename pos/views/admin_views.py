@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -77,7 +77,9 @@ def admin_dashboard(request):
 
     recent_orders = orders_qs[:10]
     orders_count = orders_qs.count()
-    avg_ticket = (total_sold / orders_count) if orders_count > 0 else Decimal("0.00")
+    # Average over paid orders only, since total_sold only counts those
+    paid_count = paid_qs.count()
+    avg_ticket = (total_sold / paid_count) if paid_count > 0 else Decimal("0.00")
 
     return render(request, "admin_dashboard.html", {
         "orders_count": orders_count,
@@ -200,13 +202,40 @@ def admin_menu(request):
         if action == "create_category":
             cat_name = (request.POST.get("cat_name") or "").strip()
             if cat_name:
-                MenuCategory.objects.create(name=cat_name)
+                last = MenuCategory.objects.order_by("-order").values_list("order", flat=True).first() or 0
+                MenuCategory.objects.create(name=cat_name, order=last + 1)
+            return redirect("admin_menu")
+
+        if action == "move_category":
+            # Renumber 1..n in the current order, then swap with the neighbor.
+            # This is the order the waiter sees the categories in.
+            cats = list(MenuCategory.objects.order_by("order", "name"))
+            ids = [c.id for c in cats]
+            cat_id = request.POST.get("cat_id")
+            step = -1 if request.POST.get("dir") == "up" else 1
+            if cat_id and cat_id.isdigit() and int(cat_id) in ids:
+                i = ids.index(int(cat_id))
+                j = i + step
+                if 0 <= j < len(cats):
+                    cats[i], cats[j] = cats[j], cats[i]
+                for n, c in enumerate(cats, start=1):
+                    if c.order != n:
+                        c.order = n
+                        c.save(update_fields=["order"])
             return redirect("admin_menu")
 
         if action == "delete_category":
             cat_id = request.POST.get("cat_id")
             if cat_id and cat_id.isdigit():
                 MenuCategory.objects.filter(id=int(cat_id)).delete()
+            return redirect("admin_menu")
+
+        if action == "toggle_available":
+            item_id = request.POST.get("id")
+            if item_id and item_id.isdigit():
+                m = get_object_or_404(MenuItem, id=int(item_id))
+                m.available = not m.available
+                m.save(update_fields=["available"])
             return redirect("admin_menu")
 
         if action == "bulk_delete":
@@ -240,9 +269,25 @@ def admin_menu(request):
 
         return redirect("admin_menu")
 
-    categories = MenuCategory.objects.filter(is_active=True).order_by("order", "name")
-    items = MenuItem.objects.select_related("category").order_by("-available", "category__order", "name")
-    return render(request, "admin_menu.html", {"items": items, "categories": categories})
+    categories = (
+        MenuCategory.objects.filter(is_active=True)
+        .annotate(item_count=Count("items"))
+        .order_by("order", "name")
+    )
+    # Sorted by category so the template can {% regroup %} it; items without
+    # a category go last.
+    items = list(
+        MenuItem.objects.select_related("category")
+        .order_by("category__order", "category__name", "name")
+    )
+    items.sort(key=lambda m: m.category is None)
+    unavailable_count = sum(1 for m in items if not m.available)
+
+    return render(request, "admin_menu.html", {
+        "items": items,
+        "categories": categories,
+        "unavailable_count": unavailable_count,
+    })
 
 
 # -------------------------
@@ -264,14 +309,28 @@ def admin_analytics(request):
         .prefetch_related("items__menu_item")
     )
 
+    # Same numbers as the dashboard KPIs: only paid orders count as sales.
     totals_by_day = {}
+    by_method = {"CASH": Decimal("0.00"), "NEQUI": Decimal("0.00"), "TRANSFER": Decimal("0.00"), "UNKNOWN": Decimal("0.00")}
+    orders_count = 0
+    paid_count = 0
+    paid_total = Decimal("0.00")
+    tips_total = 0
+
     for o in orders:
-        d = o.created_at.date()
-        if hasattr(o, "total_amount"):
-            val = o.total_amount()
-            totals_by_day[d] = totals_by_day.get(d, Decimal("0.00")) + val
-        else:
-            totals_by_day[d] = totals_by_day.get(d, Decimal("0.00")) + Decimal(str(_order_total(o)))
+        orders_count += 1
+        if not o.is_paid:
+            continue
+        val = o.total_amount()
+        paid_count += 1
+        paid_total += val
+        tips_total += o.tip_amount or 0
+        m = (o.payment_method or "").strip().upper()
+        by_method[m if m in by_method else "UNKNOWN"] += val
+        # created_at is stored in UTC; group by the restaurant's local day,
+        # otherwise every order after 19:00 in Bogotá lands on "tomorrow".
+        d = timezone.localtime(o.created_at).date()
+        totals_by_day[d] = totals_by_day.get(d, Decimal("0.00")) + val
 
     labels, totals = [], []
     dcur = start_d
@@ -284,7 +343,17 @@ def admin_analytics(request):
         labels = [today.strftime("%Y-%m-%d")]
         totals = [0.0]
 
-    return JsonResponse({"labels": labels, "totals": totals})
+    return JsonResponse({
+        "labels": labels,
+        "totals": totals,
+        "summary": {
+            "paid_total": float(paid_total),
+            "orders_count": orders_count,
+            "avg_ticket": float(paid_total / paid_count) if paid_count else 0.0,
+            "tips_total": float(tips_total),
+            "by_method": {k: float(v) for k, v in by_method.items()},
+        },
+    })
 
 
 # -------------------------
@@ -451,7 +520,13 @@ def admin_users(request):
     q = (request.GET.get("q") or "").strip()
     role = (request.GET.get("role") or "").strip()
 
-    users = User.objects.all().order_by("username")
+    all_users = User.objects.all()
+    role_counts = {r: 0 for r in User.Role.values}
+    for r in all_users.values_list("role", flat=True):
+        role_counts[r] = role_counts.get(r, 0) + 1
+
+    # Ordered by role (ADMIN, KITCHEN, WAITER) so the template can group them
+    users = all_users.order_by("role", "username")
     if q:
         users = users.filter(username__icontains=q)
     if role:
@@ -471,6 +546,9 @@ def admin_users(request):
         "q": q,
         "role_filter": role,
         "form": form,
+        "role_counts": role_counts,
+        "total_users": sum(role_counts.values()),
+        "inactive_count": all_users.filter(is_active=False).count(),
     })
 
 

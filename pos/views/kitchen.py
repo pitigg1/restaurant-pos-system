@@ -26,10 +26,12 @@ def kitchen_orders_api(request):
     if not require_roles(request.user, [User.Role.KITCHEN, User.Role.ADMIN]):
         return JsonResponse({"detail": "No autorizado"}, status=403)
 
+    # Only what the kitchen still has to cook, oldest first. Once an order
+    # is marked READY it leaves the board.
     orders = (
         Order.objects
-        .exclude(status__in=[Order.Status.CANCELED, Order.Status.DONE])
-        .order_by("created_at")
+        .filter(status__in=[Order.Status.NEW, Order.Status.PREP])
+        .order_by("created_at", "id")
         .prefetch_related("items__menu_item")
     )
 
@@ -40,6 +42,7 @@ def kitchen_orders_api(request):
             "zone": o.zone,
             "table_number": o.table_number,
             "status": o.status,
+            "created_at": o.created_at.isoformat(),
             "items": [
                 {"name": it.menu_item.name, "quantity": it.quantity, "notes": it.notes or ""}
                 for it in o.items.all()
